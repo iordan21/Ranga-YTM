@@ -22,10 +22,35 @@
     chrome.webview.postMessage('diag\n' + (widget ? widget.tagName : 'sem rodape') + '\n' + ids.join(' '));
   };
 
+  // O que o site entrega ao painel de mídia do Windows (título, artista, capa): não depende do desenho da página.
+  const session = () => {
+    const meta = navigator.mediaSession && navigator.mediaSession.metadata;
+    if (!meta || !meta.title) return null;
+    const arts = [...(meta.artwork || [])].filter((a) => a && a.src);
+    const size = (a) => parseInt(String(a.sizes || '').split('x')[0], 10) || 0;
+    // A menor capa que ainda tenha 120 px (ou a maior que houver).
+    arts.sort((a, b) => size(a) - size(b));
+    const art = arts.find((a) => size(a) >= 120) || arts[arts.length - 1];
+    return { title: meta.title, artist: meta.artist || '', art: art ? art.src : '' };
+  };
+
   // O que está tocando, como cada site mostra.
   const nowPlaying = () => {
     const media = document.querySelector('video, audio');
     if (SPOT) {
+      const known = session();
+      if (known) {
+        const button = document.querySelector('[data-testid="control-button-playpause"]');
+        const label = ((button && button.getAttribute('aria-label')) || '').toLowerCase();
+        const state = navigator.mediaSession.playbackState;
+        return {
+          ...known,
+          playing: state === 'playing' || state === 'paused' ? state === 'playing'
+                 : media ? !media.paused : (label.startsWith('pau') || label.startsWith('pause')),
+          position: seconds(text(document.querySelector('[data-testid="playback-position"]'))),
+          length: seconds(text(document.querySelector('[data-testid="playback-duration"]'))),
+        };
+      }
       // O player do Spotify fica no rodapé; os nomes internos mudam de tempos em tempos, então há reservas: os nomes
       // conhecidos, os links de música e de artista do rodapé e, por último, o título da aba ("Música • Artista").
       const widget = document.querySelector('[data-testid="now-playing-widget"]') ||
