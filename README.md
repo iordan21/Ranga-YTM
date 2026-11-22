@@ -1,4 +1,10 @@
-# Ranga YTM
+# Ranga YTM e Ranga Spot
+
+Dois apps do mesmo código: o **Ranga YTM** (YouTube Music) e o **Ranga Spot** (para ouvir o Spotify). O que muda entre eles está em `src/site.hpp`; o `compilar.ps1` gera os dois (`RangaYTM.exe` e `RangaSpot.exe`).
+
+> Apps **não oficiais**. YouTube Music é marca do Google e Spotify é marca da Spotify AB; nenhum dos dois apps é deles. Eles mostram o próprio site, não pulam propaganda nem baixam música.
+
+## Ranga YTM
 
 O YouTube Music numa janela própria, leve, com controle (DualSense, Xbox) e ícone na bandeja. Abre pela loja **Apps** do [Ranga EMU](https://github.com/iordan21/Ranga-EMU).
 
