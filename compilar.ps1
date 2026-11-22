@@ -1,12 +1,14 @@
 # Compila o Ranga YTM em build\ (RangaYTM.exe, ranga_pad.dll e o WebView2Loader.dll ao lado).
 # Usa o MinGW e o SDL 2 estatico que o Ranga EMU ja compila (C:\projetos\sos-ps5) e o kit do WebView2 em
 # deps\webview2-pkg (pacote Microsoft.Web.WebView2 do nuget.org, assinatura da Microsoft conferida).
+# -Saida <pasta>: compila em outro lugar (com o RangaYTM.exe de build\ aberto, ele nao pode ser trocado).
+param([string]$Saida = '')
 $ErrorActionPreference = 'Stop'
 $aqui = $PSScriptRoot
 $env:PATH = "C:\projetos\sos-ps5\toolchain\mingw64\bin;$env:PATH"
 $sdl = 'C:\projetos\sos-ps5\SoS-PS5\build\3rdparty\SDL2'
 $wv = "$aqui\deps\webview2-pkg\build\native"
-$out = "$aqui\build"
+$out = if ($Saida) { $Saida } else { "$aqui\build" }
 New-Item -ItemType Directory -Force $out | Out-Null
 
 & windres "$aqui\src\app.rc" -O coff -o "$out\app.res" --include-dir "$aqui\src"

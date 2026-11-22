@@ -209,11 +209,18 @@ void OnPad(int button) {
     case 3: Run(L"window.__ranga&&__ranga.move('direita')"); break;
     case 4: Run(L"window.__ranga&&__ranga.accept()"); break;
     case 5: {
-        BOOL back = FALSE;
-        if (g_web != nullptr) g_web->get_CanGoBack(&back);
-        if (back) g_web->GoBack();
-        else if (g_fullscreen && !g_fromEmu) SetFullscreen(false);
-        else if (g_fromEmu) PostMessageW(g_window, WM_CLOSE, 0, 0);
+        if (g_web == nullptr) break;
+        // Primeiro a página: com o teclado na tela aberto, B só o fecha.
+        g_web->ExecuteScript(L"!!(window.__ranga&&__ranga.back())",
+                             Make<ICoreWebView2ExecuteScriptCompletedHandler, HRESULT, LPCWSTR>([](HRESULT, LPCWSTR result) -> HRESULT {
+                                 if (result != nullptr && std::wstring(result) == L"true") return S_OK;
+                                 BOOL back = FALSE;
+                                 g_web->get_CanGoBack(&back);
+                                 if (back) g_web->GoBack();
+                                 else if (g_fullscreen && !g_fromEmu) SetFullscreen(false);
+                                 else if (g_fromEmu) PostMessageW(g_window, WM_CLOSE, 0, 0);
+                                 return S_OK;
+                             }));
         break;
     }
     case 6: Run(L"window.__ranga&&__ranga.search()"); break;
@@ -445,7 +452,8 @@ void ReadArgs() {
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     // Uma janela só: abrir de novo traz a que já existe.
-    HANDLE single = CreateMutexW(nullptr, TRUE, L"RangaYTM.unica");
+    // (Com a pasta de teste, RANGA_YTM_DADOS, a trava é outra: o teste roda ao lado do app de verdade.)
+    HANDLE single = CreateMutexW(nullptr, TRUE, _wgetenv(L"RANGA_YTM_DADOS") != nullptr ? L"RangaYTM.teste" : L"RangaYTM.unica");
     if (single != nullptr && GetLastError() == ERROR_ALREADY_EXISTS) {
         if (HWND existing = FindWindowW(kClass, nullptr)) {
             ShowWindow(existing, SW_RESTORE);
