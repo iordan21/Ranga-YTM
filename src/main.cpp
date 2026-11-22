@@ -9,6 +9,7 @@
 //   --tela-cheia          já abre em tela cheia
 //   --escala=N            a página N vezes maior (1 a 2), para ler de longe
 //   --monitor=x,y,l,a     o monitor do EMU, em pixels do Windows
+//   --idioma=pt|en|ru|es  o idioma do EMU (idioma.hpp)
 //
 // O controle vem da ranga_pad.dll (ranga_pad.c, o mesmo SDL do Ranga EMU e do Ranga TV) e só conta com a janela na
 // frente. Direcional anda, A (Cross) aperta, B (Círculo) volta, Y (Triângulo) toca/pausa, LB/RB música anterior e
@@ -25,6 +26,7 @@
 #include "site.hpp"
 #include "aviso.hpp"
 #include "mini.hpp"
+#include "idioma.hpp"
 
 #include <atomic>
 #include <functional>
@@ -66,6 +68,8 @@ constexpr IID kController2 = {0xc979903e, 0xd4ca, 0x4228, {0x92, 0xeb, 0x47, 0xe
 
 constexpr UINT kTrayMessage = WM_APP + 1, kPadMessage = WM_APP + 2;
 constexpr UINT kTrayShow = 1, kTrayPlay = 2, kTrayNext = 3, kTrayPrevious = 4, kTrayQuit = 5, kTrayAviso = 6, kTrayCompact = 7, kTrayMini = 8, kTrayOnlyMini = 9;
+constexpr UINT kTrayLang = 20; // + o idioma (Idioma::Lang)
+using Idioma::T;
 constexpr const wchar_t* kClass = Site::kId;
 constexpr const wchar_t* kHome = Site::kHome;
 
@@ -80,6 +84,7 @@ bool g_fromEmu = false, g_fullscreen = false;
 double g_scale = 1.0;
 RECT g_monitor{};
 bool g_hasMonitor = false;
+std::wstring g_forcedLang; // --idioma=
 WINDOWPLACEMENT g_beforeFullscreen{sizeof(WINDOWPLACEMENT)};
 std::atomic<bool> g_running{true};
 
@@ -317,6 +322,46 @@ void OnlyMini() {
 }
 
 // ---- A bandeja ----
+// O menu, no idioma atual (refeito quando o idioma muda).
+void BuildTrayMenu() {
+    if (g_trayMenu != nullptr) DestroyMenu(g_trayMenu);
+    g_trayMenu = CreatePopupMenu();
+    AppendMenuW(g_trayMenu, MF_STRING, kTrayShow, T(L"Mostrar"));
+    AppendMenuW(g_trayMenu, MF_STRING | (Mini::Visible() ? MF_CHECKED : MF_UNCHECKED), kTrayMini, T(L"Mini player"));
+    AppendMenuW(g_trayMenu, MF_STRING, kTrayOnlyMini, T(L"Só o mini player (esconde a janela)\tCtrl+M"));
+    AppendMenuW(g_trayMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(g_trayMenu, MF_STRING, kTrayPlay, T(L"Tocar / pausar"));
+    AppendMenuW(g_trayMenu, MF_STRING, kTrayNext, T(L"Próxima"));
+    AppendMenuW(g_trayMenu, MF_STRING, kTrayPrevious, T(L"Anterior"));
+    AppendMenuW(g_trayMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(g_trayMenu, MF_STRING | (Aviso::Enabled() ? MF_CHECKED : MF_UNCHECKED), kTrayAviso, T(L"Mostrar a música no canto (jogos)"));
+    AppendMenuW(g_trayMenu, MF_STRING | (Aviso::Compact() ? MF_CHECKED : MF_UNCHECKED), kTrayCompact, T(L"Aviso compacto (uma linha)"));
+    // O idioma: cada um no próprio nome, para achar mesmo sem entender o atual.
+    HMENU languages = CreatePopupMenu();
+    for (int i = 0; i < Idioma::Count; ++i) {
+        const auto lang = static_cast<Idioma::Lang>(i);
+        AppendMenuW(languages, MF_STRING | (Idioma::Current() == lang ? MF_CHECKED : MF_UNCHECKED), kTrayLang + i, Idioma::Name(lang));
+    }
+    const std::wstring title = Idioma::Current() == Idioma::En ? std::wstring(L"Language") : std::wstring(T(L"Idioma")) + L" (Language)";
+    AppendMenuW(g_trayMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(languages), title.c_str());
+    AppendMenuW(g_trayMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(g_trayMenu, MF_STRING, kTrayQuit, T(L"Sair"));
+}
+
+// O que a página usa no teclado na tela (controle.js lê window.__rangaLang a cada desenho).
+std::wstring LangScript() { return L"window.__rangaLang='" + std::wstring(Idioma::Code(Idioma::Current())) + L"';"; }
+
+void SetLanguage(Idioma::Lang lang) {
+    Idioma::Set(lang);
+    BuildTrayMenu();
+    Mini::Refresh();
+    if (g_web != nullptr) {
+        // Já e nas próximas páginas (o script adicionado depois roda depois do principal; o teclado lê na hora).
+        g_web->ExecuteScript(LangScript().c_str(), nullptr);
+        g_web->AddScriptToExecuteOnDocumentCreated(LangScript().c_str(), nullptr);
+    }
+}
+
 void AddTray(HICON icon) {
     g_tray.cbSize = sizeof(g_tray);
     g_tray.hWnd = g_window;
@@ -326,19 +371,7 @@ void AddTray(HICON icon) {
     g_tray.hIcon = icon;
     lstrcpynW(g_tray.szTip, Site::kName, ARRAYSIZE(g_tray.szTip));
     Shell_NotifyIconW(NIM_ADD, &g_tray);
-    g_trayMenu = CreatePopupMenu();
-    AppendMenuW(g_trayMenu, MF_STRING, kTrayShow, L"Mostrar");
-    AppendMenuW(g_trayMenu, MF_STRING | (Mini::Visible() ? MF_CHECKED : MF_UNCHECKED), kTrayMini, L"Mini player");
-    AppendMenuW(g_trayMenu, MF_STRING, kTrayOnlyMini, L"Só o mini player (esconde a janela)\tCtrl+M");
-    AppendMenuW(g_trayMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(g_trayMenu, MF_STRING, kTrayPlay, L"Tocar / pausar");
-    AppendMenuW(g_trayMenu, MF_STRING, kTrayNext, L"Próxima");
-    AppendMenuW(g_trayMenu, MF_STRING, kTrayPrevious, L"Anterior");
-    AppendMenuW(g_trayMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(g_trayMenu, MF_STRING | (Aviso::Enabled() ? MF_CHECKED : MF_UNCHECKED), kTrayAviso, L"Mostrar a música no canto (jogos)");
-    AppendMenuW(g_trayMenu, MF_STRING | (Aviso::Compact() ? MF_CHECKED : MF_UNCHECKED), kTrayCompact, L"Aviso compacto (uma linha)");
-    AppendMenuW(g_trayMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(g_trayMenu, MF_STRING, kTrayQuit, L"Sair");
+    BuildTrayMenu();
 }
 
 void SetTitle(const std::wstring& title) {
@@ -358,19 +391,24 @@ void SetTitle(const std::wstring& title) {
 void StartWebView() {
     // Teclas de mídia do teclado e o painel de mídia do Windows (tocar, pausar, próxima), que o WebView2 deixa
     // desligados se ninguém pedir.
-    SetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", L"--enable-features=HardwareMediaKeyHandling,MediaSessionService");
+    // --lang: o idioma que a página pede ao site (sem conta, ou quando a conta não escolheu outro).
+    const std::wstring browserArgs = std::wstring(L"--enable-features=HardwareMediaKeyHandling,MediaSessionService --lang=") +
+                                     Idioma::BrowserTag(Idioma::Current());
+    SetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", browserArgs.c_str());
     HMODULE loader = LoadLibraryW((ExeFolder() + L"\\WebView2Loader.dll").c_str());
     using Create = HRESULT(STDAPICALLTYPE*)(PCWSTR, PCWSTR, ICoreWebView2EnvironmentOptions*, ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler*);
     const auto create = loader == nullptr ? nullptr : reinterpret_cast<Create>(reinterpret_cast<void*>(GetProcAddress(loader, "CreateCoreWebView2EnvironmentWithOptions")));
     if (create == nullptr) {
-        MessageBoxW(g_window, (std::wstring(L"Falta o WebView2Loader.dll ao lado do ") + Site::kName + L". Baixe o app de novo pela loja do Ranga.").c_str(), Site::kName, MB_ICONERROR);
+        wchar_t text[512];
+        swprintf(text, 512, T(L"Falta o WebView2Loader.dll ao lado do %ls. Baixe o app de novo pela loja do Ranga."), Site::kName);
+        MessageBoxW(g_window, text, Site::kName, MB_ICONERROR);
         PostQuitMessage(1);
         return;
     }
     const std::wstring data = DataFolder() + L"\\perfil";
     const HRESULT started = create(nullptr, data.c_str(), nullptr, Make<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler, HRESULT, ICoreWebView2Environment*>([](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
         if (FAILED(result) || environment == nullptr) {
-            MessageBoxW(g_window, L"O WebView2 do Windows não abriu. Ele vem com o Windows 10 e 11; se faltar, instale o \"Microsoft Edge WebView2 Runtime\".", Site::kName, MB_ICONERROR);
+            MessageBoxW(g_window, T(L"O WebView2 do Windows não abriu. Ele vem com o Windows 10 e 11; se faltar, instale o \"Microsoft Edge WebView2 Runtime\"."), Site::kName, MB_ICONERROR);
             PostQuitMessage(1);
             return S_OK;
         }
@@ -493,7 +531,7 @@ void StartWebView() {
         return S_OK;
     }));
     if (FAILED(started)) {
-        MessageBoxW(g_window, L"O WebView2 do Windows não abriu.", Site::kName, MB_ICONERROR);
+        MessageBoxW(g_window, T(L"O WebView2 do Windows não abriu."), Site::kName, MB_ICONERROR);
         PostQuitMessage(1);
     }
 }
@@ -542,6 +580,8 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             } else if (chosen == kTrayCompact) {
                 Aviso::SetCompact(!Aviso::Compact());
                 CheckMenuItem(g_trayMenu, kTrayCompact, MF_BYCOMMAND | (Aviso::Compact() ? MF_CHECKED : MF_UNCHECKED));
+            } else if (chosen >= kTrayLang && chosen < kTrayLang + Idioma::Count) {
+                SetLanguage(static_cast<Idioma::Lang>(chosen - kTrayLang));
             } else if (chosen == kTrayQuit) DestroyWindow(window);
         }
         return 0;
@@ -565,6 +605,7 @@ void ReadArgs() {
         const std::wstring arg = args[i];
         if (arg == L"--ranga-emu") g_fromEmu = true;
         else if (arg == L"--tela-cheia") g_fullscreen = true;
+        else if (arg.rfind(L"--idioma=", 0) == 0) g_forcedLang = arg.substr(9);
         else if (arg.rfind(L"--escala=", 0) == 0) {
             std::wstring value = arg.substr(9);
             for (wchar_t& c : value) if (c == L',') c = L'.';
@@ -598,7 +639,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     ReadArgs();
-    g_script = L"window.__rangaSite='" + std::wstring(Site::kScriptSite, Site::kScriptSite + strlen(Site::kScriptSite)) + L"';\n" + LoadScript();
+    Idioma::Init(DataFolder() + L"\\opcoes.ini", g_forcedLang);
+    g_script = L"window.__rangaSite='" + std::wstring(Site::kScriptSite, Site::kScriptSite + strlen(Site::kScriptSite)) + L"';" + LangScript() + L"\n" + LoadScript();
 
     HICON icon = LoadIconW(instance, L"IDI_APP");
     WNDCLASSEXW type{sizeof(type)};

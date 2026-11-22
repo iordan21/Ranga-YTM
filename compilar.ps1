@@ -15,7 +15,7 @@ New-Item -ItemType Directory -Force $out | Out-Null
 foreach ($app in @(@{ Exe = 'RangaYTM'; Def = @() }, @{ Exe = 'RangaSpot'; Def = @('-DRANGA_SPOT') })) {
     & windres @($app.Def) "$aqui\src\app.rc" -O coff -o "$out\$($app.Exe).res" --include-dir "$aqui\src"
     if ($LASTEXITCODE -ne 0) { throw "windres falhou ($($app.Exe))" }
-    & g++ -std=c++20 -O2 -municode -mwindows -DUNICODE -D_UNICODE @($app.Def) "-I$wv\include" "$aqui\src\main.cpp" "$aqui\src\aviso.cpp" "$aqui\src\mini.cpp" "$out\$($app.Exe).res" `
+    & g++ -std=c++20 -O2 -municode -mwindows -DUNICODE -D_UNICODE @($app.Def) "-I$wv\include" "$aqui\src\main.cpp" "$aqui\src\aviso.cpp" "$aqui\src\mini.cpp" "$aqui\src\idioma.cpp" "$out\$($app.Exe).res" `
         -o "$out\$($app.Exe).exe" -lole32 -lshell32 -luser32 -lgdi32 -luuid -lshlwapi -lgdiplus -lurlmon -static -static-libgcc -static-libstdc++ -s
     if ($LASTEXITCODE -ne 0) { throw "g++ falhou ($($app.Exe))" }
 }

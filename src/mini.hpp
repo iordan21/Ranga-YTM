@@ -26,5 +26,7 @@ void SetVisible(bool on);
 
 // O estado novo da página (thread da janela).
 void Update(const State& state);
+// Desenha de novo (o idioma mudou).
+void Refresh();
 
 }

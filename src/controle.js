@@ -228,14 +228,45 @@
   // campo de texto. As letras entram no campo pelo mesmo caminho de uma
   // colagem (insertText), que a página aceita como digitação; nada é guardado
   // nem mandado para outro lugar.
-  const ROWS = [
+  // As teclas especiais têm um nome interno (SHIFT, SPACE...) e a legenda no idioma do app (window.__rangaLang, que o
+  // main.cpp põe e troca quando o idioma muda na bandeja). No russo há também o alfabeto cirílico (tecla ABC/АБВ),
+  // no espanhol o ñ.
+  const WORDS = {
+    SHIFT: { pt: '⇧ Maiúsc', en: '⇧ Shift', ru: '⇧ Shift', es: '⇧ Mayús' },
+    SPACE: { pt: 'Espaço', en: 'Space', ru: 'Пробел', es: 'Espacio' },
+    DEL: { pt: '⌫ Apagar', en: '⌫ Delete', ru: '⌫ Стереть', es: '⌫ Borrar' },
+    OK: { pt: '✓ Pronto', en: '✓ Done', ru: '✓ Готово', es: '✓ Listo' },
+    HINT: { pt: 'Direcional: tecla   A: digitar   B: fechar', en: 'D-pad: key   A: type   B: close',
+            ru: 'Крестовина: клавиша   A: ввод   B: закрыть', es: 'Cruceta: tecla   A: escribir   B: cerrar' },
+  };
+  const lang = () => (WORDS.OK[window.__rangaLang] ? window.__rangaLang : 'pt');
+  const word = (id) => WORDS[id][lang()];
+  const LATIN = [
     ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
     ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
     ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', '@'],
     ['z', 'x', 'c', 'v', 'b', 'n', 'm', '.', '-', '_'],
-    ['⇧ Maiúsc', 'Espaço', '⌫ Apagar', '.com', '✓ Pronto'],
   ];
-  const kb = { open: false, row: 1, col: 0, upper: false, field: null, el: null };
+  const CYRILLIC = [
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+    ['й', 'ц', 'у', 'к', 'е', 'н', 'г', 'ш', 'щ', 'з', 'х'],
+    ['ф', 'ы', 'в', 'а', 'п', 'р', 'о', 'л', 'д', 'ж', 'э'],
+    ['я', 'ч', 'с', 'м', 'и', 'т', 'ь', 'б', 'ю', 'ё', 'ъ'],
+  ];
+  const kb = { open: false, row: 1, col: 0, upper: false, cyrillic: false, field: null, el: null };
+  // As linhas de agora: as letras (latinas ou cirílicas) e a linha das especiais do idioma.
+  const rows = () => {
+    const letters = (lang() === 'ru' && kb.cyrillic ? CYRILLIC : LATIN).map((row) => row.slice());
+    if (lang() === 'es' && !kb.cyrillic) letters[2] = letters[2].concat(['ñ']);
+    const last = ['SHIFT', 'SPACE', 'DEL', '.com', 'OK'];
+    if (lang() === 'ru') last.splice(1, 0, 'ABC');
+    return letters.concat([last]);
+  };
+  const label = (key) => {
+    if (key === 'ABC') return kb.cyrillic ? 'ABC' : 'АБВ';
+    if (WORDS[key]) return key === 'SHIFT' && kb.upper ? word(key).toUpperCase() : word(key);
+    return kb.upper ? key.toUpperCase() : key;
+  };
 
   const isField = (el) =>
     !!el && ((el.tagName === 'INPUT' && !['button', 'submit', 'checkbox', 'radio', 'hidden'].includes((el.type || '').toLowerCase())) ||
@@ -253,27 +284,24 @@
     // replaceChildren, e não innerHTML: o YouTube exige Trusted Types e recusa
     // innerHTML (o teclado aparecia vazio).
     kb.el.replaceChildren();
-    ROWS.forEach((row, r) => {
+    rows().forEach((row, r) => {
       const line = document.createElement('div');
       line.style.cssText = 'display:flex;gap:8px;justify-content:center;margin:6px 0';
       row.forEach((key, c) => {
         const cell = document.createElement('div');
         const wide = key.length > 2;
-        let label = key;
-        if (!wide && kb.upper) label = key.toUpperCase();
-        if (key === '⇧ Maiúsc' && kb.upper) label = '⇧ MAIÚSC';
-        cell.textContent = label;
+        cell.textContent = label(key);
         const on = r === kb.row && c === kb.col;
         cell.style.cssText =
           'min-width:' + (wide ? 120 : 44) + 'px;height:44px;display:flex;align-items:center;justify-content:center;' +
-          'border-radius:10px;padding:0 10px;background:' + (on ? '#3ddc84' : '#2a2a2a') + ';color:' + (on ? '#000' : '#fff');
+          'border-radius:10px;padding:0 10px;white-space:nowrap;background:' + (on ? '#3ddc84' : '#2a2a2a') + ';color:' + (on ? '#000' : '#fff');
         line.appendChild(cell);
       });
       kb.el.appendChild(line);
     });
     const hint = document.createElement('div');
-    hint.textContent = 'Direcional: tecla   A: digitar   B: fechar';
-    hint.style.cssText = 'text-align:center;color:#999;font-size:13px;margin-top:8px';
+    hint.textContent = word('HINT');
+    hint.style.cssText = 'text-align:center;white-space:pre;color:#999;font-size:13px;margin-top:8px';
     kb.el.appendChild(hint);
   };
 
@@ -298,12 +326,13 @@
   };
 
   const pressKey = () => {
-    const key = ROWS[kb.row][kb.col];
-    if (key === '⇧ Maiúsc') kb.upper = !kb.upper;
-    else if (key === 'Espaço') type(' ');
-    else if (key === '⌫ Apagar') { kb.field && kb.field.focus(); document.execCommand('delete'); }
+    const key = rows()[kb.row][kb.col];
+    if (key === 'SHIFT') kb.upper = !kb.upper;
+    else if (key === 'ABC') { kb.cyrillic = !kb.cyrillic; kb.col = Math.min(kb.col, rows()[kb.row].length - 1); }
+    else if (key === 'SPACE') type(' ');
+    else if (key === 'DEL') { kb.field && kb.field.focus(); document.execCommand('delete'); }
     else if (key === '.com') type('.com');
-    else if (key === '✓ Pronto') {
+    else if (key === 'OK') {
       // Na busca do YouTube Music, Pronto já pesquisa; no login, só fecha
       // (aí é andar até "Avançar" e apertar A).
       const field = kb.field;
@@ -319,11 +348,12 @@
   };
 
   const moveKey = (dir) => {
-    if (dir === 'cima') kb.row = (kb.row + ROWS.length - 1) % ROWS.length;
-    else if (dir === 'baixo') kb.row = (kb.row + 1) % ROWS.length;
+    const all = rows();
+    if (dir === 'cima') kb.row = (kb.row + all.length - 1) % all.length;
+    else if (dir === 'baixo') kb.row = (kb.row + 1) % all.length;
     else if (dir === 'esquerda') kb.col -= 1;
     else kb.col += 1;
-    const width = ROWS[kb.row].length;
+    const width = all[kb.row].length;
     kb.col = ((kb.col % width) + width) % width;
     drawKeyboard();
   };

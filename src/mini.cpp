@@ -1,5 +1,6 @@
 #include "mini.hpp"
 #include "aviso.hpp"
+#include "idioma.hpp"
 
 #include <objidl.h>
 #include <gdiplus.h>
@@ -111,7 +112,7 @@ void Redraw() {
         Gdiplus::SolidBrush white(Gdiplus::Color(255, 255, 255, 255)), dim(Gdiplus::Color(255, 170, 170, 175)),
             faint(Gdiplus::Color(255, 120, 120, 125)), green(Gdiplus::Color(255, 61, 220, 132));
         const float textX = pad * 2 + side, textW = width - textX - 30 * s;
-        const std::wstring title = g_state.title.empty() ? L"Nada tocando" : g_state.title;
+        const std::wstring title = g_state.title.empty() ? Idioma::T(L"Nada tocando") : g_state.title;
         g.DrawString(title.c_str(), -1, &big, Gdiplus::RectF(textX, 10 * s, textW, 20 * s), &line, &white);
         g.DrawString(g_state.artist.c_str(), -1, &normal, Gdiplus::RectF(textX, 30 * s, textW, 18 * s), &line, &dim);
 
@@ -310,6 +311,10 @@ void SetVisible(bool on) {
     } else {
         ShowWindow(g_window, SW_HIDE);
     }
+}
+
+void Refresh() {
+    if (g_window != nullptr && g_visible) Redraw();
 }
 
 void Update(const State& state) {
