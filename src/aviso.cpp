@@ -86,70 +86,91 @@ void Present(BYTE alpha) {
     UpdateLayeredWindow(g_window, nullptr, &g_at, &g_size, g_dc, &origin, 0, &blend, ULW_ALPHA);
 }
 
-// Desenha a barrinha num bitmap com transparência, do tamanho certo para o monitor.
+// Desenha a barrinha num bitmap com transparência: uma linha só, capa pequena e "Música — Artista", do tamanho do
+// texto (sem caixa sobrando) e na escala do monitor.
 void Draw(const Ready& ready) {
     MONITORINFO info{sizeof(info)};
     GetMonitorInfoW(ready.monitor, &info);
     const RECT& m = info.rcMonitor;
     // Tamanho pela altura do monitor: o mesmo jeito numa TV 4K e num monitor 1080p.
     const float s = std::clamp((m.bottom - m.top) / 1080.0f, 1.0f, 2.0f);
-    const int width = static_cast<int>(360 * s), height = static_cast<int>(76 * s);
-    g_size = SIZE{width, height};
-    g_at = POINT{m.left + static_cast<int>(18 * s), m.top + static_cast<int>(18 * s)};
+    const float height = 40 * s, pad = 6 * s, side = height - pad * 2, gap = 9 * s;
+
+    Gdiplus::FontFamily family(L"Segoe UI");
+    Gdiplus::Font bold(&family, 14 * s, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font normal(&family, 13 * s, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::StringFormat line(Gdiplus::StringFormat::GenericTypographic());
+    line.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+    line.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap | Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
+    line.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    const std::wstring artist = ready.artist.empty() ? L"" : L"  —  " + ready.artist;
+
+    // Quanto o texto ocupa, para a barrinha ter o tamanho dele (até um máximo; o resto vira "...").
+    float titleW = 0, artistW = 0;
+    {
+        Gdiplus::Bitmap probe(1, 1, PixelFormat32bppPARGB);
+        Gdiplus::Graphics measure(&probe);
+        measure.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAliasGridFit);
+        Gdiplus::RectF box;
+        measure.MeasureString(ready.title.c_str(), -1, &bold, Gdiplus::PointF(0, 0), &line, &box);
+        titleW = box.Width + 2 * s;
+        if (!artist.empty()) {
+            measure.MeasureString(artist.c_str(), -1, &normal, Gdiplus::PointF(0, 0), &line, &box);
+            artistW = box.Width + 2 * s;
+        }
+    }
+    const float textMax = 400 * s;
+    if (titleW + artistW > textMax) {
+        // Corta primeiro o artista (até 35% do espaço), depois o título.
+        artistW = std::min(artistW, textMax * 0.35f);
+        titleW = std::min(titleW, textMax - artistW);
+    }
+    const float textX = pad + side + gap;
+    const int width = static_cast<int>(textX + titleW + artistW + height / 2), heightPx = static_cast<int>(height);
+    g_size = SIZE{width, heightPx};
+    g_at = POINT{m.left + static_cast<int>(16 * s), m.top + static_cast<int>(16 * s)};
 
     if (g_dc == nullptr) g_dc = CreateCompatibleDC(nullptr);
     if (g_bitmap != nullptr) DeleteObject(g_bitmap);
     BITMAPINFO bi{};
     bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
     bi.bmiHeader.biWidth = width;
-    bi.bmiHeader.biHeight = -height;
+    bi.bmiHeader.biHeight = -heightPx;
     bi.bmiHeader.biPlanes = 1;
     bi.bmiHeader.biBitCount = 32;
     void* bits = nullptr;
     g_bitmap = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
     SelectObject(g_dc, g_bitmap);
-    ZeroMemory(bits, static_cast<size_t>(width) * height * 4);
+    ZeroMemory(bits, static_cast<size_t>(width) * heightPx * 4);
 
-    Gdiplus::Bitmap canvas(width, height, width * 4, PixelFormat32bppPARGB, static_cast<BYTE*>(bits));
+    Gdiplus::Bitmap canvas(width, heightPx, width * 4, PixelFormat32bppPARGB, static_cast<BYTE*>(bits));
     Gdiplus::Graphics g(&canvas);
     g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     g.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAliasGridFit);
     g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
 
-    // Fundo escuro meio transparente: discreto por cima do jogo.
+    // Uma pílula escura e bem transparente: aparece sem tampar o jogo.
     Gdiplus::GraphicsPath box;
-    RoundRect(box, 0.5f, 0.5f, width - 1.0f, height - 1.0f, 14 * s);
-    Gdiplus::SolidBrush back(Gdiplus::Color(185, 14, 14, 16));
+    RoundRect(box, 0.5f, 0.5f, width - 1.0f, height - 1.0f, height / 2 - 0.5f);
+    Gdiplus::SolidBrush back(Gdiplus::Color(115, 10, 10, 12));
     g.FillPath(&back, &box);
-    Gdiplus::Pen edge(Gdiplus::Color(40, 255, 255, 255), 1.0f);
+    Gdiplus::Pen edge(Gdiplus::Color(22, 255, 255, 255), 1.0f);
     g.DrawPath(&edge, &box);
 
-    const float pad = 10 * s, side = height - pad * 2;
+    Gdiplus::GraphicsPath cover;
+    RoundRect(cover, pad, pad, side, side, side / 2);
     if (ready.art) {
-        Gdiplus::GraphicsPath clip;
-        RoundRect(clip, pad, pad, side, side, 8 * s);
-        g.SetClip(&clip);
+        g.SetClip(&cover);
         g.DrawImage(ready.art.get(), Gdiplus::RectF(pad, pad, side, side));
         g.ResetClip();
     } else {
-        Gdiplus::GraphicsPath empty;
-        RoundRect(empty, pad, pad, side, side, 8 * s);
-        Gdiplus::SolidBrush grey(Gdiplus::Color(255, 45, 45, 48));
-        g.FillPath(&grey, &empty);
+        Gdiplus::SolidBrush grey(Gdiplus::Color(200, 45, 45, 48));
+        g.FillPath(&grey, &cover);
     }
 
-    const float textX = pad * 2 + side, textW = width - textX - pad;
-    Gdiplus::FontFamily family(L"Segoe UI");
-    Gdiplus::Font small(&family, 10.5f * s, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font big(&family, 15.5f * s, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font normal(&family, 13 * s, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::StringFormat line;
-    line.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
-    line.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
-    Gdiplus::SolidBrush green(Gdiplus::Color(255, 61, 220, 132)), white(Gdiplus::Color(255, 255, 255, 255)), dim(Gdiplus::Color(255, 170, 170, 175));
-    g.DrawString(L"TOCANDO AGORA", -1, &small, Gdiplus::RectF(textX, pad - 1 * s, textW, 16 * s), &line, &green);
-    g.DrawString(ready.title.c_str(), -1, &big, Gdiplus::RectF(textX, pad + 14 * s, textW, 22 * s), &line, &white);
-    g.DrawString(ready.artist.c_str(), -1, &normal, Gdiplus::RectF(textX, pad + 36 * s, textW, 20 * s), &line, &dim);
+    Gdiplus::SolidBrush white(Gdiplus::Color(245, 255, 255, 255)), dim(Gdiplus::Color(215, 185, 185, 190));
+    g.DrawString(ready.title.c_str(), -1, &bold, Gdiplus::RectF(textX, 0, titleW, height), &line, &white);
+    if (!artist.empty()) g.DrawString(artist.c_str(), -1, &normal, Gdiplus::RectF(textX + titleW, 0, artistW, height), &line, &dim);
 
     // Teste: RANGA_YTM_TESTE_AVISO=<arquivo.png> guarda o desenho (o próprio bitmap, nunca a tela).
     if (const wchar_t* file = _wgetenv(L"RANGA_YTM_TESTE_AVISO"); file != nullptr) {
