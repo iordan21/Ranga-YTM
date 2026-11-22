@@ -7,6 +7,27 @@
 (() => {
   if (window.__ranga) return;
 
+  // ---- Música nova: avisa o app (o aviso no canto, por cima do jogo) ----
+  // Uma olhada por segundo na barra do player; só a página de cima (não os
+  // quadros do login) e só quando o nome muda. Vai título, artista e a capa.
+  if (window.top === window && window.chrome && chrome.webview) {
+    let last = '';
+    setInterval(() => {
+      const bar = document.querySelector('ytmusic-player-bar');
+      if (!bar) return;
+      const title = (bar.querySelector('.title') || {}).textContent;
+      if (!title || !title.trim()) return;
+      const byline = ((bar.querySelector('.byline') || {}).textContent || '').split('•')[0].trim();
+      const key = title.trim() + '|' + byline;
+      if (key === last) return;
+      last = key;
+      const img = bar.querySelector('img.image') || bar.querySelector('img');
+      // A capa em 120 px (a da barra vem em 60).
+      const art = img && img.src ? img.src.replace(/=w\d+-h\d+/, '=w120-h120') : '';
+      chrome.webview.postMessage('musica\n' + title.trim() + '\n' + byline + '\n' + art);
+    }, 1000);
+  }
+
   const css = document.createElement('style');
   css.textContent =
     // Sombra por dentro, e não só contorno: a barra lateral corta o que passa da borda dela.

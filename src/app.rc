@@ -4,8 +4,8 @@ IDI_APP ICON "ranga-ytm.ico"
 CONTROLE RCDATA "controle.js"
 
 1 VERSIONINFO
-FILEVERSION 1,0,0,0
-PRODUCTVERSION 1,0,0,0
+FILEVERSION 1,1,0,0
+PRODUCTVERSION 1,1,0,0
 BEGIN
   BLOCK "StringFileInfo"
   BEGIN
@@ -13,8 +13,8 @@ BEGIN
     BEGIN
       VALUE "FileDescription", "Ranga YTM (app não oficial do YouTube Music)"
       VALUE "ProductName", "Ranga YTM"
-      VALUE "ProductVersion", "1.0.0"
-      VALUE "FileVersion", "1.0.0"
+      VALUE "ProductVersion", "1.1.0"
+      VALUE "FileVersion", "1.1.0"
       VALUE "LegalCopyright", "Ranga. YouTube Music é marca do Google; este app não é do Google."
     END
   END

@@ -22,6 +22,7 @@
 #include <shlwapi.h>
 
 #include "WebView2.h"
+#include "aviso.hpp"
 
 #include <atomic>
 #include <functional>
@@ -62,7 +63,7 @@ template <typename Interface, typename... Args> Interface* Make(std::type_identi
 constexpr IID kController2 = {0xc979903e, 0xd4ca, 0x4228, {0x92, 0xeb, 0x47, 0xee, 0x3f, 0xa9, 0x6e, 0xab}};
 
 constexpr UINT kTrayMessage = WM_APP + 1, kPadMessage = WM_APP + 2;
-constexpr UINT kTrayShow = 1, kTrayPlay = 2, kTrayNext = 3, kTrayPrevious = 4, kTrayQuit = 5;
+constexpr UINT kTrayShow = 1, kTrayPlay = 2, kTrayNext = 3, kTrayPrevious = 4, kTrayQuit = 5, kTrayAviso = 6;
 constexpr wchar_t kClass[] = L"RangaYTM";
 constexpr wchar_t kHome[] = L"https://music.youtube.com/";
 
@@ -80,7 +81,7 @@ bool g_hasMonitor = false;
 WINDOWPLACEMENT g_beforeFullscreen{sizeof(WINDOWPLACEMENT)};
 std::atomic<bool> g_running{true};
 
-std::wstring Folder() {
+std::wstring DataFolder() {
     // Teste: RANGA_YTM_DADOS troca a pasta (a conta de verdade fica fora).
     if (const wchar_t* chosen = _wgetenv(L"RANGA_YTM_DADOS"); chosen != nullptr && *chosen != 0) {
         CreateDirectoryW(chosen, nullptr);
@@ -289,6 +290,8 @@ void AddTray(HICON icon) {
     AppendMenuW(g_trayMenu, MF_STRING, kTrayNext, L"Próxima");
     AppendMenuW(g_trayMenu, MF_STRING, kTrayPrevious, L"Anterior");
     AppendMenuW(g_trayMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(g_trayMenu, MF_STRING | (Aviso::Enabled() ? MF_CHECKED : MF_UNCHECKED), kTrayAviso, L"Mostrar a música no canto (jogos)");
+    AppendMenuW(g_trayMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(g_trayMenu, MF_STRING, kTrayQuit, L"Sair");
 }
 
@@ -318,7 +321,7 @@ void StartWebView() {
         PostQuitMessage(1);
         return;
     }
-    const std::wstring data = Folder() + L"\\perfil";
+    const std::wstring data = DataFolder() + L"\\perfil";
     const HRESULT started = create(nullptr, data.c_str(), nullptr, Make<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler, HRESULT, ICoreWebView2Environment*>([](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
         if (FAILED(result) || environment == nullptr) {
             MessageBoxW(g_window, L"O WebView2 do Windows não abriu. Ele vem com o Windows 10 e 11; se faltar, instale o \"Microsoft Edge WebView2 Runtime\".", L"Ranga YTM", MB_ICONERROR);
@@ -361,6 +364,26 @@ void StartWebView() {
                     args->put_Cancel(TRUE);
                     ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
                 }
+                return S_OK;
+            }), &token);
+            g_web->add_WebMessageReceived(Make<ICoreWebView2WebMessageReceivedEventHandler, ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs*>([](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+                // Só a página do YouTube Music fala com o app.
+                LPWSTR source = nullptr;
+                args->get_Source(&source);
+                const bool fromMusic = source != nullptr && std::wstring(source).rfind(L"https://music.youtube.com/", 0) == 0;
+                CoTaskMemFree(source);
+                LPWSTR text = nullptr;
+                if (!fromMusic || FAILED(args->TryGetWebMessageAsString(&text)) || text == nullptr) return S_OK;
+                std::wstring message = text, parts[4];
+                CoTaskMemFree(text);
+                size_t start = 0;
+                for (int i = 0; i < 4; ++i) {
+                    const size_t end = message.find(L'\n', start);
+                    parts[i] = message.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start);
+                    if (end == std::wstring::npos) break;
+                    start = end + 1;
+                }
+                if (parts[0] == L"musica" && !parts[1].empty()) Aviso::Show(g_window, parts[1].substr(0, 200), parts[2].substr(0, 200), parts[3].substr(0, 1000));
                 return S_OK;
             }), &token);
             // Janela nova (link com target=_blank): o YouTube Music na mesma janela, o resto no navegador.
@@ -411,12 +434,16 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             else if (chosen == kTrayPlay) Run(L"window.__ranga&&__ranga.playPause()");
             else if (chosen == kTrayNext) Run(L"window.__ranga&&__ranga.next()");
             else if (chosen == kTrayPrevious) Run(L"window.__ranga&&__ranga.previous()");
-            else if (chosen == kTrayQuit) DestroyWindow(window);
+            else if (chosen == kTrayAviso) {
+                Aviso::SetEnabled(!Aviso::Enabled());
+                CheckMenuItem(g_trayMenu, kTrayAviso, MF_BYCOMMAND | (Aviso::Enabled() ? MF_CHECKED : MF_UNCHECKED));
+            } else if (chosen == kTrayQuit) DestroyWindow(window);
         }
         return 0;
     case WM_DESTROY:
         g_running = false;
         Shell_NotifyIconW(NIM_DELETE, &g_tray);
+        Aviso::Stop();
         if (g_controller != nullptr) g_controller->Close();
         PostQuitMessage(0);
         return 0;
@@ -494,6 +521,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     ShowWindow(g_window, show);
     UpdateWindow(g_window);
     if (g_fromEmu) BringToFront();
+    Aviso::Start(instance, DataFolder() + L"\\opcoes.ini");
     AddTray(icon);
     StartWebView();
     std::thread pad(PadLoop);

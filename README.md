@@ -23,7 +23,11 @@ O YouTube Music numa janela própria, leve, com controle (DualSense, Xbox) e íc
 | Select | abre a tela do que está tocando |
 | Start | tela cheia |
 
-Teclado: F11 tela cheia. Teclas de mídia do teclado e o painel de mídia do Windows também funcionam.
+Teclado: F11 tela cheia.
+
+## Aviso "tocando agora"
+
+Quando a música muda e a janela do Ranga YTM não está na frente (você está num jogo), aparece por uns 4 segundos uma barrinha discreta no canto superior esquerdo do monitor do jogo, com a capa, o nome e o artista. Não pega clique nem foco. Aparece por cima de jogo em janela ou tela cheia sem borda (o modo do Ranga EMU); em tela cheia exclusiva o Windows não deixa. Liga e desliga no ícone da bandeja. Teclas de mídia do teclado e o painel de mídia do Windows também funcionam.
 
 ## Compilar
 
