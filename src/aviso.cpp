@@ -319,6 +319,13 @@ void SetEnabled(bool on) {
     WritePrivateProfileStringW(L"aviso", L"ligado", on ? L"1" : L"0", g_options.c_str());
 }
 
+std::shared_ptr<Gdiplus::Bitmap> LoadArt(const std::wstring& url) {
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    std::shared_ptr<Gdiplus::Bitmap> art(Download(url).release());
+    CoUninitialize();
+    return art;
+}
+
 bool Compact() { return g_style == L"pilula"; }
 
 void SetCompact(bool on) {

@@ -14,7 +14,7 @@ New-Item -ItemType Directory -Force $out | Out-Null
 & windres "$aqui\src\app.rc" -O coff -o "$out\app.res" --include-dir "$aqui\src"
 if ($LASTEXITCODE -ne 0) { throw "windres falhou" }
 
-& g++ -std=c++20 -O2 -municode -mwindows -DUNICODE -D_UNICODE "-I$wv\include" "$aqui\src\main.cpp" "$aqui\src\aviso.cpp" "$out\app.res" `
+& g++ -std=c++20 -O2 -municode -mwindows -DUNICODE -D_UNICODE "-I$wv\include" "$aqui\src\main.cpp" "$aqui\src\aviso.cpp" "$aqui\src\mini.cpp" "$out\app.res" `
     -o "$out\RangaYTM.exe" -lole32 -lshell32 -luser32 -lgdi32 -luuid -lshlwapi -lgdiplus -lurlmon -static -static-libgcc -static-libstdc++ -s
 if ($LASTEXITCODE -ne 0) { throw "g++ falhou" }
 

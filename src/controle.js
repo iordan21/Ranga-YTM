@@ -7,24 +7,29 @@
 (() => {
   if (window.__ranga) return;
 
-  // ---- Música nova: avisa o app (o aviso no canto, por cima do jogo) ----
-  // Uma olhada por segundo na barra do player; só a página de cima (não os
-  // quadros do login) e só quando o nome muda. Vai título, artista e a capa.
+  // ---- O que está tocando: para o app (o aviso no canto e o mini player) ----
+  // Uma olhada por segundo na barra do player, só na página de cima (não nos
+  // quadros do login): título, artista, capa, se está tocando e o tempo. O app
+  // é que vê quando a música mudou. Mensagem só quando algo mudou.
   if (window.top === window && window.chrome && chrome.webview) {
     let last = '';
     setInterval(() => {
       const bar = document.querySelector('ytmusic-player-bar');
       if (!bar) return;
-      const title = (bar.querySelector('.title') || {}).textContent;
-      if (!title || !title.trim()) return;
+      const title = ((bar.querySelector('.title') || {}).textContent || '').trim();
+      if (!title) return;
       const byline = ((bar.querySelector('.byline') || {}).textContent || '').split('•')[0].trim();
-      const key = title.trim() + '|' + byline;
-      if (key === last) return;
-      last = key;
       const img = bar.querySelector('img.image') || bar.querySelector('img');
       // A capa em 120 px (a da barra vem em 60).
       const art = img && img.src ? img.src.replace(/=w\d+-h\d+/, '=w120-h120') : '';
-      chrome.webview.postMessage('musica\n' + title.trim() + '\n' + byline + '\n' + art);
+      const media = document.querySelector('video');
+      const playing = media && !media.paused ? '1' : '0';
+      const position = media ? Math.floor(media.currentTime || 0) : 0;
+      const length = media && isFinite(media.duration) ? Math.floor(media.duration) : 0;
+      const message = ['estado', title, byline, art, playing, position, length].join('\n');
+      if (message === last) return;
+      last = message;
+      chrome.webview.postMessage(message);
     }, 1000);
   }
 

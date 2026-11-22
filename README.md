@@ -29,6 +29,12 @@ Teclado: F11 tela cheia. Teclas de mídia do teclado e o painel de mídia do Win
 
 Quando a música muda e a janela do Ranga YTM não está na frente (você está num jogo), aparece por uns 4 segundos uma barrinha discreta no canto superior esquerdo do monitor do jogo, com a capa, o nome e o artista. Não pega clique nem foco. Aparece por cima de jogo em janela ou tela cheia sem borda (o modo do Ranga EMU); em tela cheia exclusiva o Windows não deixa. Liga e desliga no ícone da bandeja.
 
+## Mini player
+
+Uma janelinha sempre por cima com a capa, o nome, o artista, anterior / tocar-pausar / próxima e o tempo. Abre e fecha
+pelo ícone da bandeja (Mini player), arrasta-se pelo fundo e lembra onde ficou. Clicar nela não tira o foco do jogo.
+Com ela aberta, o aviso do canto não aparece (a música já está à vista).
+
 ## Compilar
 
 `powershell -ExecutionPolicy Bypass -File compilar.ps1` gera `build\` (RangaYTM.exe, ranga_pad.dll, WebView2Loader.dll). Precisa:

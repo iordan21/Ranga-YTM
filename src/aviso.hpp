@@ -7,7 +7,12 @@
 
 #include <windows.h>
 
+#include <memory>
 #include <string>
+
+namespace Gdiplus {
+class Bitmap;
+}
 
 namespace Aviso {
 
@@ -20,6 +25,9 @@ void SetEnabled(bool on);
 // Compacto: uma linha só ("pilula"); senão o cartão com capa grande (o padrão).
 bool Compact();
 void SetCompact(bool on);
+
+// A capa de uma música pela internet (bloqueia: chamar fora da thread da janela). Nula se não veio.
+std::shared_ptr<Gdiplus::Bitmap> LoadArt(const std::wstring& url);
 
 // A música mudou (thread da janela). app: a janela do Ranga YTM; com ela na frente o aviso não aparece (a pessoa
 // já está vendo a música).

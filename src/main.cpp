@@ -23,6 +23,7 @@
 
 #include "WebView2.h"
 #include "aviso.hpp"
+#include "mini.hpp"
 
 #include <atomic>
 #include <functional>
@@ -63,7 +64,7 @@ template <typename Interface, typename... Args> Interface* Make(std::type_identi
 constexpr IID kController2 = {0xc979903e, 0xd4ca, 0x4228, {0x92, 0xeb, 0x47, 0xee, 0x3f, 0xa9, 0x6e, 0xab}};
 
 constexpr UINT kTrayMessage = WM_APP + 1, kPadMessage = WM_APP + 2;
-constexpr UINT kTrayShow = 1, kTrayPlay = 2, kTrayNext = 3, kTrayPrevious = 4, kTrayQuit = 5, kTrayAviso = 6, kTrayCompact = 7;
+constexpr UINT kTrayShow = 1, kTrayPlay = 2, kTrayNext = 3, kTrayPrevious = 4, kTrayQuit = 5, kTrayAviso = 6, kTrayCompact = 7, kTrayMini = 8;
 constexpr wchar_t kClass[] = L"RangaYTM";
 constexpr wchar_t kHome[] = L"https://music.youtube.com/";
 
@@ -285,6 +286,7 @@ void AddTray(HICON icon) {
     Shell_NotifyIconW(NIM_ADD, &g_tray);
     g_trayMenu = CreatePopupMenu();
     AppendMenuW(g_trayMenu, MF_STRING, kTrayShow, L"Mostrar");
+    AppendMenuW(g_trayMenu, MF_STRING | (Mini::Visible() ? MF_CHECKED : MF_UNCHECKED), kTrayMini, L"Mini player");
     AppendMenuW(g_trayMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(g_trayMenu, MF_STRING, kTrayPlay, L"Tocar / pausar");
     AppendMenuW(g_trayMenu, MF_STRING, kTrayNext, L"Próxima");
@@ -375,16 +377,31 @@ void StartWebView() {
                 CoTaskMemFree(source);
                 LPWSTR text = nullptr;
                 if (!fromMusic || FAILED(args->TryGetWebMessageAsString(&text)) || text == nullptr) return S_OK;
-                std::wstring message = text, parts[4];
+                std::wstring message = text, parts[7];
                 CoTaskMemFree(text);
                 size_t start = 0;
-                for (int i = 0; i < 4; ++i) {
+                for (int i = 0; i < 7; ++i) {
                     const size_t end = message.find(L'\n', start);
                     parts[i] = message.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start);
                     if (end == std::wstring::npos) break;
                     start = end + 1;
                 }
-                if (parts[0] == L"musica" && !parts[1].empty()) Aviso::Show(g_window, parts[1].substr(0, 200), parts[2].substr(0, 200), parts[3].substr(0, 1000));
+                if (parts[0] != L"estado" || parts[1].empty()) return S_OK;
+                Mini::State state;
+                state.title = parts[1].substr(0, 200);
+                state.artist = parts[2].substr(0, 200);
+                state.art = parts[3].substr(0, 1000);
+                state.playing = parts[4] == L"1";
+                state.position = _wtoi(parts[5].c_str());
+                state.length = _wtoi(parts[6].c_str());
+                // Música nova: o aviso no canto (com o mini player aberto ele já mostra, e o aviso fica quieto).
+                static std::wstring lastSong;
+                const std::wstring song = state.title + L"|" + state.artist;
+                if (song != lastSong) {
+                    lastSong = song;
+                    if (!Mini::Visible()) Aviso::Show(g_window, state.title, state.artist, state.art);
+                }
+                Mini::Update(state);
                 return S_OK;
             }), &token);
             // Janela nova (link com target=_blank): o YouTube Music na mesma janela, o resto no navegador.
@@ -438,6 +455,9 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             else if (chosen == kTrayAviso) {
                 Aviso::SetEnabled(!Aviso::Enabled());
                 CheckMenuItem(g_trayMenu, kTrayAviso, MF_BYCOMMAND | (Aviso::Enabled() ? MF_CHECKED : MF_UNCHECKED));
+            } else if (chosen == kTrayMini) {
+                Mini::SetVisible(!Mini::Visible());
+                CheckMenuItem(g_trayMenu, kTrayMini, MF_BYCOMMAND | (Mini::Visible() ? MF_CHECKED : MF_UNCHECKED));
             } else if (chosen == kTrayCompact) {
                 Aviso::SetCompact(!Aviso::Compact());
                 CheckMenuItem(g_trayMenu, kTrayCompact, MF_BYCOMMAND | (Aviso::Compact() ? MF_CHECKED : MF_UNCHECKED));
@@ -447,6 +467,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     case WM_DESTROY:
         g_running = false;
         Shell_NotifyIconW(NIM_DELETE, &g_tray);
+        Mini::Stop();
         Aviso::Stop();
         if (g_controller != nullptr) g_controller->Close();
         PostQuitMessage(0);
@@ -526,6 +547,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     UpdateWindow(g_window);
     if (g_fromEmu) BringToFront();
     Aviso::Start(instance, DataFolder() + L"\\opcoes.ini");
+    Mini::Start(instance, DataFolder() + L"\\opcoes.ini", [](const char* action) {
+        const std::wstring js = L"window.__ranga&&__ranga." + std::wstring(action, action + strlen(action)) + L"()";
+        Run(js.c_str());
+    });
     AddTray(icon);
     StartWebView();
     std::thread pad(PadLoop);
