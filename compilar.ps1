@@ -11,12 +11,14 @@ $wv = "$aqui\deps\webview2-pkg\build\native"
 $out = if ($Saida) { $Saida } else { "$aqui\build" }
 New-Item -ItemType Directory -Force $out | Out-Null
 
-& windres "$aqui\src\app.rc" -O coff -o "$out\app.res" --include-dir "$aqui\src"
-if ($LASTEXITCODE -ne 0) { throw "windres falhou" }
-
-& g++ -std=c++20 -O2 -municode -mwindows -DUNICODE -D_UNICODE "-I$wv\include" "$aqui\src\main.cpp" "$aqui\src\aviso.cpp" "$aqui\src\mini.cpp" "$out\app.res" `
-    -o "$out\RangaYTM.exe" -lole32 -lshell32 -luser32 -lgdi32 -luuid -lshlwapi -lgdiplus -lurlmon -static -static-libgcc -static-libstdc++ -s
-if ($LASTEXITCODE -ne 0) { throw "g++ falhou" }
+# Dois programas do mesmo codigo (src\site.hpp): RangaYTM.exe e, com -DRANGA_SPOT, RangaSpot.exe.
+foreach ($app in @(@{ Exe = 'RangaYTM'; Def = @() }, @{ Exe = 'RangaSpot'; Def = @('-DRANGA_SPOT') })) {
+    & windres @($app.Def) "$aqui\src\app.rc" -O coff -o "$out\$($app.Exe).res" --include-dir "$aqui\src"
+    if ($LASTEXITCODE -ne 0) { throw "windres falhou ($($app.Exe))" }
+    & g++ -std=c++20 -O2 -municode -mwindows -DUNICODE -D_UNICODE @($app.Def) "-I$wv\include" "$aqui\src\main.cpp" "$aqui\src\aviso.cpp" "$aqui\src\mini.cpp" "$out\$($app.Exe).res" `
+        -o "$out\$($app.Exe).exe" -lole32 -lshell32 -luser32 -lgdi32 -luuid -lshlwapi -lgdiplus -lurlmon -static -static-libgcc -static-libstdc++ -s
+    if ($LASTEXITCODE -ne 0) { throw "g++ falhou ($($app.Exe))" }
+}
 
 & gcc -O2 -shared -o "$out\ranga_pad.dll" "$aqui\src\ranga_pad.c" "-I$sdl\include\SDL2" "-I$sdl\include-config-release\SDL2" "-L$sdl" -lSDL2 `
     -lm -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -ldinput8 -lcfgmgr32 `

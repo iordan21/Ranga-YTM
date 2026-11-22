@@ -3,19 +3,33 @@
 IDI_APP ICON "ranga-ytm.ico"
 CONTROLE RCDATA "controle.js"
 
+#ifdef RANGA_SPOT
+#define APP_VERSION 1,0,0,0
+#define APP_VERSION_TEXT "1.0.0"
+#define APP_NAME "Ranga Spot"
+#define APP_DESCRIPTION "Ranga Spot (app não oficial para ouvir o Spotify)"
+#define APP_NOTICE "Ranga. Spotify é marca da Spotify AB; este app não é do Spotify."
+#else
+#define APP_VERSION 1,2,0,0
+#define APP_VERSION_TEXT "1.2.0"
+#define APP_NAME "Ranga YTM"
+#define APP_DESCRIPTION "Ranga YTM (app não oficial do YouTube Music)"
+#define APP_NOTICE "Ranga. YouTube Music é marca do Google; este app não é do Google."
+#endif
+
 1 VERSIONINFO
-FILEVERSION 1,2,0,0
-PRODUCTVERSION 1,2,0,0
+FILEVERSION APP_VERSION
+PRODUCTVERSION APP_VERSION
 BEGIN
   BLOCK "StringFileInfo"
   BEGIN
     BLOCK "041604B0"
     BEGIN
-      VALUE "FileDescription", "Ranga YTM (app não oficial do YouTube Music)"
-      VALUE "ProductName", "Ranga YTM"
-      VALUE "ProductVersion", "1.2.0"
-      VALUE "FileVersion", "1.2.0"
-      VALUE "LegalCopyright", "Ranga. YouTube Music é marca do Google; este app não é do Google."
+      VALUE "FileDescription", APP_DESCRIPTION
+      VALUE "ProductName", APP_NAME
+      VALUE "ProductVersion", APP_VERSION_TEXT
+      VALUE "FileVersion", APP_VERSION_TEXT
+      VALUE "LegalCopyright", APP_NOTICE
     END
   END
   BLOCK "VarFileInfo"

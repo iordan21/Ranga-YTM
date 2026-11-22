@@ -22,6 +22,7 @@
 #include <shlwapi.h>
 
 #include "WebView2.h"
+#include "site.hpp"
 #include "aviso.hpp"
 #include "mini.hpp"
 
@@ -65,8 +66,8 @@ constexpr IID kController2 = {0xc979903e, 0xd4ca, 0x4228, {0x92, 0xeb, 0x47, 0xe
 
 constexpr UINT kTrayMessage = WM_APP + 1, kPadMessage = WM_APP + 2;
 constexpr UINT kTrayShow = 1, kTrayPlay = 2, kTrayNext = 3, kTrayPrevious = 4, kTrayQuit = 5, kTrayAviso = 6, kTrayCompact = 7, kTrayMini = 8;
-constexpr wchar_t kClass[] = L"RangaYTM";
-constexpr wchar_t kHome[] = L"https://music.youtube.com/";
+constexpr const wchar_t* kClass = Site::kId;
+constexpr const wchar_t* kHome = Site::kHome;
 
 HWND g_window = nullptr;
 HMENU g_trayMenu = nullptr;
@@ -90,7 +91,7 @@ std::wstring DataFolder() {
     }
     wchar_t* appData = nullptr;
     std::wstring folder;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &appData))) folder = std::wstring(appData) + L"\\RangaYTM";
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &appData))) folder = std::wstring(appData) + L"\\" + Site::kId;
     CoTaskMemFree(appData);
     CreateDirectoryW(folder.c_str(), nullptr);
     return folder;
@@ -127,9 +128,8 @@ bool Allowed(const std::wstring& url) {
     host = host.substr(0, host.find_first_of(L"/:?#"));
     for (wchar_t& c : host) c = static_cast<wchar_t>(towlower(c));
     const auto ends = [&](const std::wstring& tail) { return host == tail || (host.size() > tail.size() && host.compare(host.size() - tail.size(), tail.size(), tail) == 0 && host[host.size() - tail.size() - 1] == L'.'); };
-    if (ends(L"youtube.com") || ends(L"google.com") || ends(L"gstatic.com") || ends(L"googleusercontent.com") || ends(L"youtube-nocookie.com")) return true;
-    // O login do Google às vezes passa pelo domínio do país (accounts.google.com.br).
-    return host.rfind(L"accounts.google.", 0) == 0;
+    (void)ends;
+    return Site::Allowed(host);
 }
 
 void Resize() {
@@ -314,7 +314,7 @@ void AddTray(HICON icon) {
     g_tray.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     g_tray.uCallbackMessage = kTrayMessage;
     g_tray.hIcon = icon;
-    lstrcpynW(g_tray.szTip, L"Ranga YTM", ARRAYSIZE(g_tray.szTip));
+    lstrcpynW(g_tray.szTip, Site::kName, ARRAYSIZE(g_tray.szTip));
     Shell_NotifyIconW(NIM_ADD, &g_tray);
     g_trayMenu = CreatePopupMenu();
     AppendMenuW(g_trayMenu, MF_STRING, kTrayShow, L"Mostrar");
@@ -333,10 +333,10 @@ void AddTray(HICON icon) {
 void SetTitle(const std::wstring& title) {
     // A página já diz o que está tocando no título ("Música • Artista - YouTube Music").
     std::wstring shown = title;
-    const std::wstring tail = L" - YouTube Music";
+    const std::wstring tail = Site::kTitleTail;
     if (shown.size() > tail.size() && shown.compare(shown.size() - tail.size(), tail.size(), tail) == 0) shown.resize(shown.size() - tail.size());
-    if (shown.empty() || shown == L"YouTube Music") shown = L"Ranga YTM";
-    else shown += L" — Ranga YTM";
+    if (shown.empty() || shown == Site::kPageName) shown = Site::kName;
+    else shown += std::wstring(L" — ") + Site::kName;
     SetWindowTextW(g_window, shown.c_str());
     lstrcpynW(g_tray.szTip, shown.c_str(), ARRAYSIZE(g_tray.szTip));
     g_tray.uFlags = NIF_TIP;
@@ -352,14 +352,14 @@ void StartWebView() {
     using Create = HRESULT(STDAPICALLTYPE*)(PCWSTR, PCWSTR, ICoreWebView2EnvironmentOptions*, ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler*);
     const auto create = loader == nullptr ? nullptr : reinterpret_cast<Create>(reinterpret_cast<void*>(GetProcAddress(loader, "CreateCoreWebView2EnvironmentWithOptions")));
     if (create == nullptr) {
-        MessageBoxW(g_window, L"Falta o WebView2Loader.dll ao lado do Ranga YTM. Baixe o app de novo pela loja do Ranga.", L"Ranga YTM", MB_ICONERROR);
+        MessageBoxW(g_window, (std::wstring(L"Falta o WebView2Loader.dll ao lado do ") + Site::kName + L". Baixe o app de novo pela loja do Ranga.").c_str(), Site::kName, MB_ICONERROR);
         PostQuitMessage(1);
         return;
     }
     const std::wstring data = DataFolder() + L"\\perfil";
     const HRESULT started = create(nullptr, data.c_str(), nullptr, Make<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler, HRESULT, ICoreWebView2Environment*>([](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
         if (FAILED(result) || environment == nullptr) {
-            MessageBoxW(g_window, L"O WebView2 do Windows não abriu. Ele vem com o Windows 10 e 11; se faltar, instale o \"Microsoft Edge WebView2 Runtime\".", L"Ranga YTM", MB_ICONERROR);
+            MessageBoxW(g_window, L"O WebView2 do Windows não abriu. Ele vem com o Windows 10 e 11; se faltar, instale o \"Microsoft Edge WebView2 Runtime\".", Site::kName, MB_ICONERROR);
             PostQuitMessage(1);
             return S_OK;
         }
@@ -405,7 +405,7 @@ void StartWebView() {
                 // Só a página do YouTube Music fala com o app.
                 LPWSTR source = nullptr;
                 args->get_Source(&source);
-                const bool fromMusic = source != nullptr && std::wstring(source).rfind(L"https://music.youtube.com/", 0) == 0;
+                const bool fromMusic = source != nullptr && std::wstring(source).rfind(Site::kOrigin, 0) == 0;
                 CoTaskMemFree(source);
                 LPWSTR text = nullptr;
                 if (!fromMusic || FAILED(args->TryGetWebMessageAsString(&text)) || text == nullptr) return S_OK;
@@ -453,7 +453,7 @@ void StartWebView() {
         return S_OK;
     }));
     if (FAILED(started)) {
-        MessageBoxW(g_window, L"O WebView2 do Windows não abriu.", L"Ranga YTM", MB_ICONERROR);
+        MessageBoxW(g_window, L"O WebView2 do Windows não abriu.", Site::kName, MB_ICONERROR);
         PostQuitMessage(1);
     }
 }
@@ -539,7 +539,8 @@ void ReadArgs() {
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     // Uma janela só: abrir de novo traz a que já existe.
     // (Com a pasta de teste, RANGA_YTM_DADOS, a trava é outra: o teste roda ao lado do app de verdade.)
-    HANDLE single = CreateMutexW(nullptr, TRUE, _wgetenv(L"RANGA_YTM_DADOS") != nullptr ? L"RangaYTM.teste" : L"RangaYTM.unica");
+    const std::wstring lock = std::wstring(Site::kId) + (_wgetenv(L"RANGA_YTM_DADOS") != nullptr ? L".teste" : L".unica");
+    HANDLE single = CreateMutexW(nullptr, TRUE, lock.c_str());
     if (single != nullptr && GetLastError() == ERROR_ALREADY_EXISTS) {
         if (HWND existing = FindWindowW(kClass, nullptr)) {
             ShowWindow(existing, SW_RESTORE);
@@ -550,7 +551,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     ReadArgs();
-    g_script = LoadScript();
+    g_script = L"window.__rangaSite='" + std::wstring(Site::kScriptSite, Site::kScriptSite + strlen(Site::kScriptSite)) + L"';\n" + LoadScript();
 
     HICON icon = LoadIconW(instance, L"IDI_APP");
     WNDCLASSEXW type{sizeof(type)};
@@ -571,7 +572,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         area = info.rcWork;
     }
     const int width = std::min<int>(1280, area.right - area.left), height = std::min<int>(800, area.bottom - area.top);
-    g_window = CreateWindowExW(0, kClass, L"Ranga YTM", WS_OVERLAPPEDWINDOW, area.left + (area.right - area.left - width) / 2,
+    g_window = CreateWindowExW(0, kClass, Site::kName, WS_OVERLAPPEDWINDOW, area.left + (area.right - area.left - width) / 2,
                                area.top + (area.bottom - area.top - height) / 2, width, height, nullptr, nullptr, instance, nullptr);
     if (g_fullscreen) {
         g_fullscreen = false;

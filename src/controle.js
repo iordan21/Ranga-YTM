@@ -6,6 +6,44 @@
 // está em foco. Nada aqui lê ou muda a conta, e nada pula propaganda.
 (() => {
   if (window.__ranga) return;
+  // Qual app: "ytm" (YouTube Music) ou "spot" (Spotify); o main.cpp põe isto antes do script.
+  const SPOT = window.__rangaSite === 'spot';
+  const text = (el) => ((el && el.textContent) || '').trim();
+  const seconds = (clock) => clock.split(':').reduce((total, part) => total * 60 + (parseInt(part, 10) || 0), 0);
+
+  // O que está tocando, como cada site mostra.
+  const nowPlaying = () => {
+    const media = document.querySelector('video, audio');
+    if (SPOT) {
+      const widget = document.querySelector('[data-testid="now-playing-widget"]');
+      if (!widget) return null;
+      const title = text(widget.querySelector('[data-testid="context-item-info-title"]'));
+      const artist = text(widget.querySelector('[data-testid="context-item-info-artist"]') ||
+                          widget.querySelector('[data-testid="context-item-info-subtitles"]'));
+      const img = widget.querySelector('img');
+      const button = document.querySelector('[data-testid="control-button-playpause"]');
+      const label = ((button && button.getAttribute('aria-label')) || '').toLowerCase();
+      // O botão diz o que ele FAZ: "Pausar" é porque está tocando.
+      const playing = media ? !media.paused : (label.startsWith('pau') || label.startsWith('pause'));
+      return {
+        title, artist, art: img && img.src ? img.src : '', playing,
+        position: seconds(text(document.querySelector('[data-testid="playback-position"]'))),
+        length: seconds(text(document.querySelector('[data-testid="playback-duration"]'))),
+      };
+    }
+    const bar = document.querySelector('ytmusic-player-bar');
+    if (!bar) return null;
+    const img = bar.querySelector('img.image') || bar.querySelector('img');
+    return {
+      title: text(bar.querySelector('.title')),
+      artist: text(bar.querySelector('.byline')).split('•')[0].trim(),
+      // A capa em 120 px (a da barra vem em 60).
+      art: img && img.src ? img.src.replace(/=w\d+-h\d+/, '=w120-h120') : '',
+      playing: !!media && !media.paused,
+      position: media ? Math.floor(media.currentTime || 0) : 0,
+      length: media && isFinite(media.duration) ? Math.floor(media.duration) : 0,
+    };
+  };
 
   // ---- O que está tocando: para o app (o aviso no canto e o mini player) ----
   // Uma olhada por segundo na barra do player, só na página de cima (não nos
@@ -14,19 +52,9 @@
   if (window.top === window && window.chrome && chrome.webview) {
     let last = '';
     setInterval(() => {
-      const bar = document.querySelector('ytmusic-player-bar');
-      if (!bar) return;
-      const title = ((bar.querySelector('.title') || {}).textContent || '').trim();
-      if (!title) return;
-      const byline = ((bar.querySelector('.byline') || {}).textContent || '').split('•')[0].trim();
-      const img = bar.querySelector('img.image') || bar.querySelector('img');
-      // A capa em 120 px (a da barra vem em 60).
-      const art = img && img.src ? img.src.replace(/=w\d+-h\d+/, '=w120-h120') : '';
-      const media = document.querySelector('video');
-      const playing = media && !media.paused ? '1' : '0';
-      const position = media ? Math.floor(media.currentTime || 0) : 0;
-      const length = media && isFinite(media.duration) ? Math.floor(media.duration) : 0;
-      const message = ['estado', title, byline, art, playing, position, length].join('\n');
+      const now = nowPlaying();
+      if (!now || !now.title) return;
+      const message = ['estado', now.title, now.artist, now.art, now.playing ? '1' : '0', now.position, now.length].join('\n');
       if (message === last) return;
       last = message;
       chrome.webview.postMessage(message);
@@ -38,7 +66,18 @@
     // Sombra por dentro, e não só contorno: a barra lateral corta o que passa da borda dela.
     '.ranga-foco{outline:3px solid #3ddc84 !important;outline-offset:-3px !important;' +
     'box-shadow:inset 0 0 0 3px #3ddc84, 0 0 18px rgba(61,220,132,.45) !important;border-radius:10px !important}';
-  const addCss = () => (document.head || document.documentElement).appendChild(css);
+  // Folha criada por código (adoptedStyleSheets): o Spotify recusa <style> de
+  // fora pela regra de segurança dele (CSP), e a borda não aparecia; esta passa.
+  // Sem suporte, o <style> de sempre.
+  const addCss = () => {
+    try {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(css.textContent);
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    } catch (e) {
+      (document.head || document.documentElement).appendChild(css);
+    }
+  };
   if (document.head) addCss(); else document.addEventListener('DOMContentLoaded', addCss);
 
   const SELECTOR = [
@@ -59,8 +98,9 @@
 
   // O que ganha a borda: o cartão ou a linha inteira em volta do link, que de
   // longe (na TV) é o que se enxerga; o foco continua no link.
-  const ringOf = (el) =>
-    el.closest('ytmusic-two-row-item-renderer, ytmusic-responsive-list-item-renderer, ytmusic-guide-entry-renderer') || el;
+  const CARDS = 'ytmusic-two-row-item-renderer, ytmusic-responsive-list-item-renderer, ytmusic-guide-entry-renderer, ' +
+    '[data-testid="tracklist-row"], [data-encore-id="card"], [data-testid="card"]';
+  const ringOf = (el) => el.closest(CARDS) || el;
   let ring = null;
 
   const mark = (el) => {
@@ -83,15 +123,20 @@
       // Primeira vez (ou a página mudou): o primeiro cartão ou música que aparece,
       // que é o que se quer no sofá; sem nenhum, o primeiro item da tela.
       const onScreen = all.filter((el) => el.getBoundingClientRect().top >= 0);
-      mark(onScreen.find((el) => el.closest('ytmusic-two-row-item-renderer, ytmusic-responsive-list-item-renderer')) ||
+      mark(onScreen.find((el) => el.closest(CARDS) && !el.closest('ytmusic-guide-entry-renderer')) ||
            onScreen[0] || all[0]);
       return;
     }
-    const from = center(current.getBoundingClientRect());
+    // Mede de cartão para cartão: o que está dentro do mesmo cartão (no Spotify,
+    // capa, botão de tocar e nome) não conta como "o próximo".
+    const here = ringOf(current);
+    const from = center(here.getBoundingClientRect());
     let best = null, bestScore = Infinity;
     for (const el of all) {
       if (el === current || current.contains(el) || el.contains(current)) continue;
-      const to = center(el.getBoundingClientRect());
+      const card = ringOf(el);
+      if (card === here || here.contains(card)) continue;
+      const to = center(card.getBoundingClientRect());
       const dx = to.x - from.x, dy = to.y - from.y;
       let main, side;
       if (dir === 'cima') { main = -dy; side = Math.abs(dx); }
@@ -198,8 +243,10 @@
       // (aí é andar até "Avançar" e apertar A).
       const field = kb.field;
       closeKeyboard();
-      if (field && field.closest && field.closest('ytmusic-search-box') && field.value.trim())
-        location.href = '/search?q=' + encodeURIComponent(field.value.trim());
+      const query = field && field.value ? field.value.trim() : '';
+      if (query && field.closest && field.closest('ytmusic-search-box')) location.href = '/search?q=' + encodeURIComponent(query);
+      else if (query && SPOT && field.matches('[data-testid="search-input"], input[type="search"]'))
+        location.href = '/search/' + encodeURIComponent(query);
       return;
     }
     else type(kb.upper ? key.toUpperCase() : key);
@@ -235,12 +282,37 @@
       return true;
     },
     // Os botões da barra do player, pelos nomes que a página usa.
-    playPause() { click('ytmusic-player-bar #play-pause-button') || click('#play-pause-button'); },
-    next() { click('ytmusic-player-bar .next-button') || click('.next-button'); },
-    previous() { click('ytmusic-player-bar .previous-button') || click('.previous-button'); },
+    playPause() {
+      if (SPOT) click('[data-testid="control-button-playpause"]');
+      else click('ytmusic-player-bar #play-pause-button') || click('#play-pause-button');
+    },
+    next() {
+      if (SPOT) click('[data-testid="control-button-skip-forward"]');
+      else click('ytmusic-player-bar .next-button') || click('.next-button');
+    },
+    previous() {
+      if (SPOT) click('[data-testid="control-button-skip-back"]');
+      else click('ytmusic-player-bar .previous-button') || click('.previous-button');
+    },
     // Abre e fecha a tela grande do que está tocando.
-    togglePlayer() { click('ytmusic-player-bar .toggle-player-page-button') || click('ytmusic-player-bar'); },
+    togglePlayer() {
+      if (SPOT) click('[data-testid="control-button-npv"]');
+      else click('ytmusic-player-bar .toggle-player-page-button') || click('ytmusic-player-bar');
+    },
     search() {
+      if (SPOT) {
+        // A busca do Spotify é uma página: vai até ela e abre o teclado no campo.
+        if (!location.pathname.startsWith('/search')) click('a[href="/search"]') || (location.href = '/search');
+        let tries = 0;
+        const wait = setInterval(() => {
+          const input = document.querySelector('[data-testid="search-input"]') || document.querySelector('input[type="search"]');
+          if (input || ++tries > 20) {
+            clearInterval(wait);
+            if (input) { mark(input); openKeyboard(input); }
+          }
+        }, 150);
+        return;
+      }
       click('ytmusic-search-box #placeholder') || click('ytmusic-search-box');
       setTimeout(() => {
         const input = document.querySelector('ytmusic-search-box input');
