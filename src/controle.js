@@ -59,14 +59,29 @@
     const bar = document.querySelector('ytmusic-player-bar');
     if (!bar) return null;
     const img = bar.querySelector('img.image') || bar.querySelector('img');
+    // O tempo da música: o que a barra mostra ("0:40 / 3:50"). O vídeo da página não serve: tocando sem pausa
+    // entre músicas, o YouTube Music emenda tudo no mesmo fluxo e o tempo dele vai somando a fila inteira.
+    // Reserva: a barra de progresso (em segundos da música); só por último o vídeo.
+    const clock = text(bar.querySelector('.time-info')).split('/').map((part) => part.trim());
+    const slider = bar.querySelector('#progress-bar');
+    let position = 0, length = 0;
+    if (clock.length === 2 && clock[1]) {
+      position = seconds(clock[0]);
+      length = seconds(clock[1]);
+    } else if (slider && Number(slider.getAttribute('aria-valuemax')) > 0) {
+      position = Math.floor(Number(slider.getAttribute('aria-valuenow')) || 0);
+      length = Math.floor(Number(slider.getAttribute('aria-valuemax')));
+    } else if (media) {
+      position = Math.floor(media.currentTime || 0);
+      length = isFinite(media.duration) ? Math.floor(media.duration) : 0;
+    }
     return {
       title: text(bar.querySelector('.title')),
       artist: text(bar.querySelector('.byline')).split('•')[0].trim(),
       // A capa em 120 px (a da barra vem em 60).
       art: img && img.src ? img.src.replace(/=w\d+-h\d+/, '=w120-h120') : '',
       playing: !!media && !media.paused,
-      position: media ? Math.floor(media.currentTime || 0) : 0,
-      length: media && isFinite(media.duration) ? Math.floor(media.duration) : 0,
+      position, length,
     };
   };
 

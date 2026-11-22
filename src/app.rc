@@ -10,8 +10,8 @@ CONTROLE RCDATA "controle.js"
 #define APP_DESCRIPTION "Ranga Spot (app não oficial para ouvir o Spotify)"
 #define APP_NOTICE "Ranga. Spotify é marca da Spotify AB; este app não é do Spotify."
 #else
-#define APP_VERSION 1,4,0,0
-#define APP_VERSION_TEXT "1.4.0"
+#define APP_VERSION 1,4,1,0
+#define APP_VERSION_TEXT "1.4.1"
 #define APP_NAME "Ranga YTM"
 #define APP_DESCRIPTION "Ranga YTM (app não oficial do YouTube Music)"
 #define APP_NOTICE "Ranga. YouTube Music é marca do Google; este app não é do Google."
