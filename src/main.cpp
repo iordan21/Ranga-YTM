@@ -63,7 +63,7 @@ template <typename Interface, typename... Args> Interface* Make(std::type_identi
 constexpr IID kController2 = {0xc979903e, 0xd4ca, 0x4228, {0x92, 0xeb, 0x47, 0xee, 0x3f, 0xa9, 0x6e, 0xab}};
 
 constexpr UINT kTrayMessage = WM_APP + 1, kPadMessage = WM_APP + 2;
-constexpr UINT kTrayShow = 1, kTrayPlay = 2, kTrayNext = 3, kTrayPrevious = 4, kTrayQuit = 5, kTrayAviso = 6;
+constexpr UINT kTrayShow = 1, kTrayPlay = 2, kTrayNext = 3, kTrayPrevious = 4, kTrayQuit = 5, kTrayAviso = 6, kTrayCompact = 7;
 constexpr wchar_t kClass[] = L"RangaYTM";
 constexpr wchar_t kHome[] = L"https://music.youtube.com/";
 
@@ -291,6 +291,7 @@ void AddTray(HICON icon) {
     AppendMenuW(g_trayMenu, MF_STRING, kTrayPrevious, L"Anterior");
     AppendMenuW(g_trayMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(g_trayMenu, MF_STRING | (Aviso::Enabled() ? MF_CHECKED : MF_UNCHECKED), kTrayAviso, L"Mostrar a música no canto (jogos)");
+    AppendMenuW(g_trayMenu, MF_STRING | (Aviso::Compact() ? MF_CHECKED : MF_UNCHECKED), kTrayCompact, L"Aviso compacto (uma linha)");
     AppendMenuW(g_trayMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(g_trayMenu, MF_STRING, kTrayQuit, L"Sair");
 }
@@ -437,6 +438,9 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             else if (chosen == kTrayAviso) {
                 Aviso::SetEnabled(!Aviso::Enabled());
                 CheckMenuItem(g_trayMenu, kTrayAviso, MF_BYCOMMAND | (Aviso::Enabled() ? MF_CHECKED : MF_UNCHECKED));
+            } else if (chosen == kTrayCompact) {
+                Aviso::SetCompact(!Aviso::Compact());
+                CheckMenuItem(g_trayMenu, kTrayCompact, MF_BYCOMMAND | (Aviso::Compact() ? MF_CHECKED : MF_UNCHECKED));
             } else if (chosen == kTrayQuit) DestroyWindow(window);
         }
         return 0;

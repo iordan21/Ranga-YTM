@@ -23,6 +23,8 @@ HWND g_window = nullptr;
 ULONG_PTR g_gdiplus = 0;
 std::wstring g_options;
 bool g_enabled = true;
+// Jeito do aviso (opcoes.ini [aviso] estilo): "cartao" (padrão) ou "pilula".
+std::wstring g_style = L"cartao";
 std::atomic<unsigned> g_generation{0};
 
 HBITMAP g_bitmap = nullptr;
@@ -88,7 +90,7 @@ void Present(BYTE alpha) {
 
 // Desenha a barrinha num bitmap com transparência: uma linha só, capa pequena e "Música — Artista", do tamanho do
 // texto (sem caixa sobrando) e na escala do monitor.
-void Draw(const Ready& ready) {
+void DrawPill(const Ready& ready) {
     MONITORINFO info{sizeof(info)};
     GetMonitorInfoW(ready.monitor, &info);
     const RECT& m = info.rcMonitor;
@@ -179,6 +181,78 @@ void Draw(const Ready& ready) {
     }
 }
 
+// O cartão: capa grande, nome em cima e artista embaixo, sem rótulo. É o padrão.
+void DrawCard(const Ready& ready) {
+    MONITORINFO info{sizeof(info)};
+    GetMonitorInfoW(ready.monitor, &info);
+    const RECT& m = info.rcMonitor;
+    const float s = std::clamp((m.bottom - m.top) / 1080.0f, 1.0f, 2.0f);
+    const int width = static_cast<int>(360 * s), height = static_cast<int>(76 * s);
+    g_size = SIZE{width, height};
+    g_at = POINT{m.left + static_cast<int>(18 * s), m.top + static_cast<int>(18 * s)};
+
+    if (g_dc == nullptr) g_dc = CreateCompatibleDC(nullptr);
+    if (g_bitmap != nullptr) DeleteObject(g_bitmap);
+    BITMAPINFO bi{};
+    bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+    bi.bmiHeader.biWidth = width;
+    bi.bmiHeader.biHeight = -height;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    void* bits = nullptr;
+    g_bitmap = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    SelectObject(g_dc, g_bitmap);
+    ZeroMemory(bits, static_cast<size_t>(width) * height * 4);
+
+    Gdiplus::Bitmap canvas(width, height, width * 4, PixelFormat32bppPARGB, static_cast<BYTE*>(bits));
+    Gdiplus::Graphics g(&canvas);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    g.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAliasGridFit);
+    g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+
+    Gdiplus::GraphicsPath box;
+    RoundRect(box, 0.5f, 0.5f, width - 1.0f, height - 1.0f, 14 * s);
+    Gdiplus::SolidBrush back(Gdiplus::Color(185, 14, 14, 16));
+    g.FillPath(&back, &box);
+    Gdiplus::Pen edge(Gdiplus::Color(40, 255, 255, 255), 1.0f);
+    g.DrawPath(&edge, &box);
+
+    const float pad = 10 * s, side = height - pad * 2;
+    Gdiplus::GraphicsPath cover;
+    RoundRect(cover, pad, pad, side, side, 8 * s);
+    if (ready.art) {
+        g.SetClip(&cover);
+        g.DrawImage(ready.art.get(), Gdiplus::RectF(pad, pad, side, side));
+        g.ResetClip();
+    } else {
+        Gdiplus::SolidBrush grey(Gdiplus::Color(255, 45, 45, 48));
+        g.FillPath(&grey, &cover);
+    }
+
+    // Nome e artista centralizados na altura (o lugar do rótulo saiu).
+    const float textX = pad * 2 + side, textW = width - textX - pad;
+    Gdiplus::FontFamily family(L"Segoe UI");
+    Gdiplus::Font big(&family, 15.5f * s, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font normal(&family, 13 * s, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::StringFormat line;
+    line.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+    line.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    Gdiplus::SolidBrush white(Gdiplus::Color(255, 255, 255, 255)), dim(Gdiplus::Color(255, 170, 170, 175));
+    const float top = (height - 42 * s) / 2;
+    g.DrawString(ready.title.c_str(), -1, &big, Gdiplus::RectF(textX, top, textW, 22 * s), &line, &white);
+    g.DrawString(ready.artist.c_str(), -1, &normal, Gdiplus::RectF(textX, top + 22 * s, textW, 20 * s), &line, &dim);
+
+    if (const wchar_t* file = _wgetenv(L"RANGA_YTM_TESTE_AVISO"); file != nullptr) {
+        CLSID png;
+        if (PngEncoder(png)) canvas.Save(file, &png, nullptr);
+    }
+}
+
+void Draw(const Ready& ready) {
+    if (g_style == L"pilula") DrawPill(ready);
+    else DrawCard(ready);
+}
+
 LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     if (message == kReady) {
         std::unique_ptr<Ready> ready(reinterpret_cast<Ready*>(lParam));
@@ -216,6 +290,9 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
 void Start(HINSTANCE instance, const std::wstring& options) {
     g_options = options;
     g_enabled = GetPrivateProfileIntW(L"aviso", L"ligado", 1, g_options.c_str()) != 0;
+    wchar_t style[32] = {};
+    GetPrivateProfileStringW(L"aviso", L"estilo", L"cartao", style, 32, g_options.c_str());
+    g_style = style;
     Gdiplus::GdiplusStartupInput input;
     Gdiplus::GdiplusStartup(&g_gdiplus, &input, nullptr);
     WNDCLASSEXW type{sizeof(type)};
@@ -240,6 +317,13 @@ bool Enabled() { return g_enabled; }
 void SetEnabled(bool on) {
     g_enabled = on;
     WritePrivateProfileStringW(L"aviso", L"ligado", on ? L"1" : L"0", g_options.c_str());
+}
+
+bool Compact() { return g_style == L"pilula"; }
+
+void SetCompact(bool on) {
+    g_style = on ? L"pilula" : L"cartao";
+    WritePrivateProfileStringW(L"aviso", L"estilo", g_style.c_str(), g_options.c_str());
 }
 
 void Show(HWND app, const std::wstring& title, const std::wstring& artist, const std::wstring& artUrl) {

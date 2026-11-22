@@ -17,6 +17,9 @@ void Stop();
 
 bool Enabled();
 void SetEnabled(bool on);
+// Compacto: uma linha só ("pilula"); senão o cartão com capa grande (o padrão).
+bool Compact();
+void SetCompact(bool on);
 
 // A música mudou (thread da janela). app: a janela do Ranga YTM; com ela na frente o aviso não aparece (a pessoa
 // já está vendo a música).
