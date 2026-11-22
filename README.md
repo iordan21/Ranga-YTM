@@ -41,6 +41,9 @@ Uma janelinha sempre por cima com a capa, o nome, o artista, anterior / tocar-pa
 pelo ícone da bandeja (Mini player), arrasta-se pelo fundo e lembra onde ficou. Clicar nela não tira o foco do jogo.
 Com ela aberta, o aviso do canto não aparece (a música já está à vista).
 
+**Só o mini player:** Ctrl+M (ou "Só o mini player" na bandeja) esconde a janela principal e deixa só o mini player.
+O botão ao lado do × no mini player traz a janela de volta; fechar o mini player com a janela escondida também a traz.
+
 ## Compilar
 
 `powershell -ExecutionPolicy Bypass -File compilar.ps1` gera `build\` (RangaYTM.exe, ranga_pad.dll, WebView2Loader.dll). Precisa:

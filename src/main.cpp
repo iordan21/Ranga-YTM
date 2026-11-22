@@ -65,7 +65,7 @@ template <typename Interface, typename... Args> Interface* Make(std::type_identi
 constexpr IID kController2 = {0xc979903e, 0xd4ca, 0x4228, {0x92, 0xeb, 0x47, 0xee, 0x3f, 0xa9, 0x6e, 0xab}};
 
 constexpr UINT kTrayMessage = WM_APP + 1, kPadMessage = WM_APP + 2;
-constexpr UINT kTrayShow = 1, kTrayPlay = 2, kTrayNext = 3, kTrayPrevious = 4, kTrayQuit = 5, kTrayAviso = 6, kTrayCompact = 7, kTrayMini = 8;
+constexpr UINT kTrayShow = 1, kTrayPlay = 2, kTrayNext = 3, kTrayPrevious = 4, kTrayQuit = 5, kTrayAviso = 6, kTrayCompact = 7, kTrayMini = 8, kTrayOnlyMini = 9;
 constexpr const wchar_t* kClass = Site::kId;
 constexpr const wchar_t* kHome = Site::kHome;
 
@@ -301,9 +301,18 @@ void TestScript() {
             start = end + 1;
             Sleep(1500);
             if (step == L"foto") PostMessageW(g_window, kPadMessage, kTestPhoto, ++photos);
+            if (step == L"somini") PostMessageW(g_window, kPadMessage, kTestPhoto + 3, 0);
             for (int b = 0; b < 12; ++b) if (step == names[b]) PostMessageW(g_window, kPadMessage, b, 0);
         }
     }).detach();
+}
+
+// Só o mini player: ele aparece e a janela principal some (da tela e da barra de tarefas). Volta pelo botão do mini
+// player, pelo ícone da bandeja, ou abrindo o app de novo.
+void OnlyMini() {
+    Mini::SetVisible(true);
+    ShowWindow(g_window, SW_HIDE);
+    CheckMenuItem(g_trayMenu, kTrayMini, MF_BYCOMMAND | MF_CHECKED);
 }
 
 // ---- A bandeja ----
@@ -319,6 +328,7 @@ void AddTray(HICON icon) {
     g_trayMenu = CreatePopupMenu();
     AppendMenuW(g_trayMenu, MF_STRING, kTrayShow, L"Mostrar");
     AppendMenuW(g_trayMenu, MF_STRING | (Mini::Visible() ? MF_CHECKED : MF_UNCHECKED), kTrayMini, L"Mini player");
+    AppendMenuW(g_trayMenu, MF_STRING, kTrayOnlyMini, L"Só o mini player (esconde a janela)\tCtrl+M");
     AppendMenuW(g_trayMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(g_trayMenu, MF_STRING, kTrayPlay, L"Tocar / pausar");
     AppendMenuW(g_trayMenu, MF_STRING, kTrayNext, L"Próxima");
@@ -370,6 +380,27 @@ void StartWebView() {
             g_controller->get_CoreWebView2(&g_web);
             Resize();
             if (g_scale > 1.0) g_controller->put_ZoomFactor(g_scale);
+            // Os atalhos com a página em foco (a janela em si quase nunca tem o teclado): F11 tela cheia, Ctrl+M só o
+            // mini player.
+            EventRegistrationToken keyToken;
+            g_controller->add_AcceleratorKeyPressed(
+                Make<ICoreWebView2AcceleratorKeyPressedEventHandler, ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs*>(
+                    [](ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs* args) -> HRESULT {
+                        COREWEBVIEW2_KEY_EVENT_KIND kind;
+                        UINT key = 0;
+                        args->get_KeyEventKind(&kind);
+                        args->get_VirtualKey(&key);
+                        if (kind != COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN) return S_OK;
+                        if (key == VK_F11) {
+                            SetFullscreen(!g_fullscreen);
+                            args->put_Handled(TRUE);
+                        } else if (key == 'M' && (GetKeyState(VK_CONTROL) & 0x8000)) {
+                            OnlyMini();
+                            args->put_Handled(TRUE);
+                        }
+                        return S_OK;
+                    }),
+                &keyToken);
             // Fundo escuro enquanto a página não pinta (sem o clarão branco ao abrir).
             ICoreWebView2Controller2* controller2 = nullptr;
             if (SUCCEEDED(g_controller->QueryInterface(kController2, reinterpret_cast<void**>(&controller2))) && controller2 != nullptr) {
@@ -417,6 +448,14 @@ void StartWebView() {
                     parts[i] = message.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start);
                     if (end == std::wstring::npos) break;
                     start = end + 1;
+                }
+                // O diagnóstico da página (só nomes internos dos elementos, nada da conta), para corrigir seletores.
+                if (parts[0] == L"diag") {
+                    if (FILE* file = _wfopen((DataFolder() + L"\\diagnostico.txt").c_str(), L"w, ccs=UTF-8")) {
+                        fwprintf(file, L"%ls %ls\n%ls\n%ls\n", Site::kName, L"(nomes do rodapé do player)", parts[1].c_str(), parts[2].c_str());
+                        fclose(file);
+                    }
+                    return S_OK;
                 }
                 if (parts[0] != L"estado" || parts[1].empty()) return S_OK;
                 Mini::State state;
@@ -473,6 +512,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         if (wParam == kTestPhoto) TestPhoto(static_cast<int>(lParam));
         else if (wParam == kTestPhoto + 1) TestProbe();
         else if (wParam == kTestPhoto + 2) TestProbeRead();
+        else if (wParam == kTestPhoto + 3) OnlyMini();
         else OnPad(static_cast<int>(wParam));
         return 0;
     case kTrayMessage:
@@ -489,6 +529,8 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             else if (chosen == kTrayAviso) {
                 Aviso::SetEnabled(!Aviso::Enabled());
                 CheckMenuItem(g_trayMenu, kTrayAviso, MF_BYCOMMAND | (Aviso::Enabled() ? MF_CHECKED : MF_UNCHECKED));
+            } else if (chosen == kTrayOnlyMini) {
+                OnlyMini();
             } else if (chosen == kTrayMini) {
                 Mini::SetVisible(!Mini::Visible());
                 CheckMenuItem(g_trayMenu, kTrayMini, MF_BYCOMMAND | (Mini::Visible() ? MF_CHECKED : MF_UNCHECKED));
@@ -583,6 +625,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     if (g_fromEmu) BringToFront();
     Aviso::Start(instance, DataFolder() + L"\\opcoes.ini");
     Mini::Start(instance, DataFolder() + L"\\opcoes.ini", [](const char* action) {
+        if (strcmp(action, "show") == 0 || (strcmp(action, "closed") == 0 && !IsWindowVisible(g_window))) {
+            BringToFront();
+            return;
+        }
+        if (strcmp(action, "closed") == 0) return;
         const std::wstring js = L"window.__ranga&&__ranga." + std::wstring(action, action + strlen(action)) + L"()";
         Run(js.c_str());
     });

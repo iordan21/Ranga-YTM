@@ -24,7 +24,7 @@ std::wstring g_artUrl;
 std::shared_ptr<Gdiplus::Bitmap> g_art;
 bool g_visible = false;
 float g_scale = 1.0f;
-int g_hover = -1; // botão sob o mouse: 0 anterior, 1 tocar/pausar, 2 próxima, 3 fechar
+int g_hover = -1; // botão sob o mouse: 0 anterior, 1 tocar/pausar, 2 próxima, 3 fechar, 4 abrir o app
 
 HDC g_dc = nullptr;
 HBITMAP g_bitmap = nullptr;
@@ -40,6 +40,7 @@ struct Box {
 Box ButtonBox(int index) {
     const float s = g_scale;
     if (index == 3) return {(kWidth - 26) * s, 4 * s, 22 * s, 22 * s};
+    if (index == 4) return {(kWidth - 50) * s, 4 * s, 22 * s, 22 * s};
     return {(94 + index * 40) * s, 52 * s, 32 * s, 32 * s};
 }
 
@@ -135,6 +136,21 @@ void Redraw() {
                 g.FillRectangle(&white, cx + dir * small * 0.6f - (dir > 0 ? 0 : 2.2f * s), cy - small, 2.2f * s, small * 2);
             }
         }
+        // Abrir o app (um quadrado com seta), ao lado do fechar.
+        {
+            const Box b = ButtonBox(4);
+            Gdiplus::Pen pen(g_hover == 4 ? Gdiplus::Color(255, 255, 255, 255) : Gdiplus::Color(255, 120, 120, 125), 1.5f * s);
+            // Um quadrado aberto no canto de cima à direita, com a seta saindo por ele (o "abrir em janela").
+            const float m = 6 * s, x0 = b.x + m, y0 = b.y + m, x1 = b.x + b.w - m, y1 = b.y + b.h - m;
+            const float midX = (x0 + x1) / 2, midY = (y0 + y1) / 2, head = 4 * s;
+            g.DrawLine(&pen, midX, y0, x0, y0);
+            g.DrawLine(&pen, x0, y0, x0, y1);
+            g.DrawLine(&pen, x0, y1, x1, y1);
+            g.DrawLine(&pen, x1, y1, x1, midY);
+            g.DrawLine(&pen, midX, midY, x1, y0);
+            g.DrawLine(&pen, x1, y0, x1 - head, y0);
+            g.DrawLine(&pen, x1, y0, x1, y0 + head);
+        }
         // Fechar (×) no canto.
         {
             const Box b = ButtonBox(3);
@@ -176,7 +192,7 @@ void Redraw() {
 }
 
 int HitButton(int x, int y) {
-    for (int i = 0; i < 4; ++i) if (ButtonBox(i).Has(static_cast<float>(x), static_cast<float>(y))) return i;
+    for (int i = 0; i < 5; ++i) if (ButtonBox(i).Has(static_cast<float>(x), static_cast<float>(y))) return i;
     return -1;
 }
 
@@ -211,8 +227,13 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         return 0;
     case WM_LBUTTONUP: {
         const int hit = HitButton(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
-        if (hit == 3) SetVisible(false);
-        else if (hit >= 0 && g_action) {
+        if (hit == 3) {
+            SetVisible(false);
+            if (g_action) g_action("closed");
+        } else if (hit == 4) {
+            if (g_action) g_action("show");
+        }
+        else if (hit >= 0 && hit <= 2 && g_action) {
             g_action(hit == 0 ? "previous" : hit == 1 ? "playPause" : "next");
             // A resposta da página chega em até 1 s; o botão já troca na hora.
             if (hit == 1) {

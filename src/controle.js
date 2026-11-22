@@ -11,22 +11,47 @@
   const text = (el) => ((el && el.textContent) || '').trim();
   const seconds = (clock) => clock.split(':').reduce((total, part) => total * 60 + (parseInt(part, 10) || 0), 0);
 
+  // Tocando e sem achar o nome: manda ao app, uma vez, só os nomes internos (data-testid) do rodapé, nenhum texto,
+  // para corrigir os seletores (o app grava em diagnostico.txt na pasta de dados).
+  let diagnosed = false;
+  const diagnose = (widget) => {
+    if (diagnosed || !(window.chrome && chrome.webview)) return;
+    diagnosed = true;
+    const root = widget || document.body;
+    const ids = [...new Set([...root.querySelectorAll('[data-testid]')].map((el) => el.getAttribute('data-testid')))].slice(0, 120);
+    chrome.webview.postMessage('diag\n' + (widget ? widget.tagName : 'sem rodape') + '\n' + ids.join(' '));
+  };
+
   // O que está tocando, como cada site mostra.
   const nowPlaying = () => {
     const media = document.querySelector('video, audio');
     if (SPOT) {
-      const widget = document.querySelector('[data-testid="now-playing-widget"]');
-      if (!widget) return null;
-      const title = text(widget.querySelector('[data-testid="context-item-info-title"]'));
-      const artist = text(widget.querySelector('[data-testid="context-item-info-artist"]') ||
-                          widget.querySelector('[data-testid="context-item-info-subtitles"]'));
-      const img = widget.querySelector('img');
+      // O player do Spotify fica no rodapé; os nomes internos mudam de tempos em tempos, então há reservas: os nomes
+      // conhecidos, os links de música e de artista do rodapé e, por último, o título da aba ("Música • Artista").
+      const widget = document.querySelector('[data-testid="now-playing-widget"]') ||
+                     document.querySelector('[data-testid="now-playing-bar"]') || document.querySelector('footer');
+      let title = '', artist = '', art = '';
+      if (widget) {
+        title = text(widget.querySelector('[data-testid="context-item-info-title"]') ||
+                     widget.querySelector('[data-testid="context-item-link"]') ||
+                     widget.querySelector('a[href*="/track/"]') || widget.querySelector('a[href*="/episode/"]'));
+        artist = text(widget.querySelector('[data-testid="context-item-info-artist"]')) ||
+                 [...widget.querySelectorAll('a[href*="/artist/"], a[href*="/show/"]')].map(text).filter(Boolean).join(', ');
+        const img = widget.querySelector('img[data-testid="cover-art-image"]') || widget.querySelector('img');
+        art = img && img.src ? img.src : '';
+      }
+      if (!title && document.title.includes(' • ')) {
+        const parts = document.title.split(' • ');
+        title = parts[0].trim();
+        artist = artist || parts.slice(1).join(' • ').replace(/\s*[|–-]\s*Spotify.*$/, '').trim();
+      }
       const button = document.querySelector('[data-testid="control-button-playpause"]');
       const label = ((button && button.getAttribute('aria-label')) || '').toLowerCase();
       // O botão diz o que ele FAZ: "Pausar" é porque está tocando.
       const playing = media ? !media.paused : (label.startsWith('pau') || label.startsWith('pause'));
+      if (!title && playing) diagnose(widget);
       return {
-        title, artist, art: img && img.src ? img.src : '', playing,
+        title, artist, art, playing,
         position: seconds(text(document.querySelector('[data-testid="playback-position"]'))),
         length: seconds(text(document.querySelector('[data-testid="playback-duration"]'))),
       };
