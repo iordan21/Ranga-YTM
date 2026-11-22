@@ -42,7 +42,8 @@ pelo ícone da bandeja (Mini player), arrasta-se pelo fundo e lembra onde ficou.
 Com ela aberta, o aviso do canto não aparece (a música já está à vista).
 
 **Só o mini player:** Ctrl+M (ou "Só o mini player" na bandeja) esconde a janela principal e deixa só o mini player.
-O botão ao lado do × no mini player traz a janela de volta; fechar o mini player com a janela escondida também a traz.
+O X da janela faz o mesmo: a música continua no mini player. O botão ao lado do × no mini player traz a janela de volta;
+o × do mini player (com a janela escondida) ou "Sair" na bandeja fecham o app de vez.
 
 ## Compilar
 

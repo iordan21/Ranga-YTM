@@ -307,8 +307,9 @@ void TestScript() {
     }).detach();
 }
 
-// Só o mini player: ele aparece e a janela principal some (da tela e da barra de tarefas). Volta pelo botão do mini
-// player, pelo ícone da bandeja, ou abrindo o app de novo.
+// Só o mini player: ele aparece e a janela principal some (da tela e da barra de tarefas). É também o que o X da
+// janela faz: a música continua. Volta pelo botão do mini player, pelo ícone da bandeja, ou abrindo o app de novo;
+// o X do mini player (com a janela escondida) ou "Sair" na bandeja fecham o app de vez.
 void OnlyMini() {
     Mini::SetVisible(true);
     ShowWindow(g_window, SW_HIDE);
@@ -508,6 +509,10 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     case WM_KEYDOWN:
         if (wParam == VK_F11) SetFullscreen(!g_fullscreen);
         return 0;
+    case WM_CLOSE:
+        // O X (e o B na primeira página, vindo do Ranga EMU) não fecha: fica só o mini player, tocando.
+        OnlyMini();
+        return 0;
     case kPadMessage:
         if (wParam == kTestPhoto) TestPhoto(static_cast<int>(lParam));
         else if (wParam == kTestPhoto + 1) TestProbe();
@@ -625,8 +630,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     if (g_fromEmu) BringToFront();
     Aviso::Start(instance, DataFolder() + L"\\opcoes.ini");
     Mini::Start(instance, DataFolder() + L"\\opcoes.ini", [](const char* action) {
-        if (strcmp(action, "show") == 0 || (strcmp(action, "closed") == 0 && !IsWindowVisible(g_window))) {
+        if (strcmp(action, "show") == 0) {
             BringToFront();
+            return;
+        }
+        // Fechou o mini player com a janela escondida: era o que sobrava do app, então ele fecha de vez.
+        if (strcmp(action, "closed") == 0 && !IsWindowVisible(g_window)) {
+            DestroyWindow(g_window);
             return;
         }
         if (strcmp(action, "closed") == 0) return;
