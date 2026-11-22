@@ -254,7 +254,39 @@ void TestPhoto(int number) {
                           }));
 }
 
+// Teste: RANGA_YTM_TESTE_SONDA=<js> roda o js na página depois de 12 s e grava a resposta em RANGA_YTM_TESTE_SONDA_SAIDA.
+void TestProbe() {
+    const wchar_t* js = _wgetenv(L"RANGA_YTM_TESTE_SONDA");
+    const wchar_t* out = _wgetenv(L"RANGA_YTM_TESTE_SONDA_SAIDA");
+    if (js == nullptr || out == nullptr || g_web == nullptr) return;
+    // O js pode ser assíncrono: ele guarda a resposta em window.__sonda, lida 4 s depois.
+    g_web->ExecuteScript(js, nullptr);
+    Sleep(0);
+    std::thread([] {
+        Sleep(4000);
+        PostMessageW(g_window, kPadMessage, kTestPhoto + 2, 0);
+    }).detach();
+}
+
+void TestProbeRead() {
+    const wchar_t* out = _wgetenv(L"RANGA_YTM_TESTE_SONDA_SAIDA");
+    if (out == nullptr || g_web == nullptr) return;
+    g_web->ExecuteScript(L"JSON.stringify(window.__sonda===undefined?'(sem resposta)':window.__sonda)", Make<ICoreWebView2ExecuteScriptCompletedHandler, HRESULT, LPCWSTR>([path = std::wstring(out)](HRESULT, LPCWSTR result) -> HRESULT {
+        if (FILE* file = _wfopen(path.c_str(), L"w, ccs=UTF-8")) {
+            fputws(result != nullptr ? result : L"(nada)", file);
+            fclose(file);
+        }
+        return S_OK;
+    }));
+}
+
 void TestScript() {
+    if (_wgetenv(L"RANGA_YTM_TESTE_SONDA") != nullptr) {
+        std::thread([] {
+            Sleep(12000);
+            PostMessageW(g_window, kPadMessage, kTestPhoto + 1, 0);
+        }).detach();
+    }
     const wchar_t* script = _wgetenv(L"RANGA_YTM_TESTE");
     if (script == nullptr) return;
     std::thread([text = std::wstring(script)] {
@@ -439,6 +471,8 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         return 0;
     case kPadMessage:
         if (wParam == kTestPhoto) TestPhoto(static_cast<int>(lParam));
+        else if (wParam == kTestPhoto + 1) TestProbe();
+        else if (wParam == kTestPhoto + 2) TestProbeRead();
         else OnPad(static_cast<int>(wParam));
         return 0;
     case kTrayMessage:
