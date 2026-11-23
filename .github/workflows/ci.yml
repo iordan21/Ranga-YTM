@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Compila os dois programas (o ranga_pad.dll fica de fora: usa o SDL 2 do Ranga EMU).
+jobs:
+  compilar:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc unzip
+      - name: Kit do WebView2
+        run: |
+          curl -fsSL -o wv.zip https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.4370.26
+          mkdir -p deps/wv && unzip -q wv.zip -d deps/wv
+      - name: Compilar
+        run: |
+          for app in RangaYTM:-DRANGA_YTM RangaSpot:-DRANGA_SPOT; do
+            exe=${app%%:*} def=${app##*:}
+            windres $def src/app.rc -O coff -o $exe.res --include-dir src
+            g++ -std=c++20 -O2 -municode -mwindows -DUNICODE -D_UNICODE $def -Ideps/wv/build/native/include \
+              src/main.cpp src/aviso.cpp src/mini.cpp src/idioma.cpp $exe.res -o $exe.exe \
+              -lole32 -lshell32 -luser32 -lgdi32 -luuid -lshlwapi -lgdiplus -lurlmon -static
+          done

@@ -55,3 +55,7 @@ o × do mini player (com a janela escondida) ou "Sair" na bandeja fecham o app d
 ## Argumentos (os que o Ranga EMU passa)
 
 `--ranga-emu`, `--tela-cheia`, `--escala=N` (1 a 2), `--monitor=x,y,largura,altura`.
+
+## Licença
+
+MIT (veja [LICENSE](LICENSE)). Vale para o código daqui: o SDL 2 e o WebView2 têm as suas próprias licenças.
